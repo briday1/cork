@@ -109,7 +109,7 @@ npm run build
 python3 -m http.server 8000 --directory dist
 ```
 
-The `dist/` build is just a file copy. It does not transform the app or add a runtime dependency. Deploy the root files or `dist/` to any static host.
+The `dist/` build copies the public files and stamps their URLs with a content version so browsers load matching scripts, styles, and textures after an update. It adds no runtime dependency. Deploy the root files or `dist/` to any static host.
 
 ## Project files
 
