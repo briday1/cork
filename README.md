@@ -4,7 +4,7 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 [Open Cork](https://briday1.github.io/cork/)
 
-![Cork with the sidebar open, colorful notes, and a ruled index card](./docs/cork-board.jpg)
+![Cork with notes, a ruled index card, a Polaroid, and a folder](./docs/cork-board.jpg)
 
 **Plain HTML, CSS, and JavaScript. No backend, accounts, API keys, or install step required.** GitHub Pages serves the same static files that run locally.
 
@@ -33,7 +33,7 @@ Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the han
 
 Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for export/import and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
 
-![The full board with its sidebar collapsed](./docs/cork-full-board.jpg)
+![An empty board with the sidebar collapsed](./docs/cork-full-board.jpg)
 
 ### Keyboard shortcuts
 

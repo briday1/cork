@@ -498,3 +498,4 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
 .note.polaroid .pin, .note.manila-folder .pin { width: 8px; height: 8px; background: #aa4a37; opacity: 1; }
 .note.polaroid .pin { top: 3px; }
 .note.manila-folder .pin { top: 9px; }
+.board-footer .view-controls { margin-left: auto; }
