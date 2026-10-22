@@ -29,6 +29,8 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 .search-box input::placeholder{color:#939788}
 .search-box kbd{font-size:10px;color:#9da18e;border:1px solid #e5e7de;border-radius:3px;padding:0 4px}
 .category-list{margin-top:15px;min-height:45px;flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#d7d9cc transparent;padding:0 3px 10px 0}
+.category-group-title{font-size:10px;font-weight:600;letter-spacing:.4px;color:#858d77;margin:18px 10px 7px}
+.category-group-title:first-child{margin-top:2px}
 .category-row{display:flex;align-items:center;gap:11px;text-align:left;min-height:41px;width:100%;padding:9px 10px;border:1px solid transparent;border-radius:7px;position:relative;margin:2px 0;color:#62675b;font-size:12px;transition:background .12s,color .12s}
 .category-row:hover{background:#eeefe6}
 .category-row.is-active{border-color:transparent;background:#e9eee3;color:#3e5335}
@@ -435,3 +437,61 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
   .note-resize-height { left: 10px; width: 44px; height: 44px; opacity: .35; }
   .note-resize-height:after { left: 12px; top: 33px; }
 }
+
+/* Larger, consistent headings and compact supply buttons. */
+.sidebar-heading { margin-bottom: 24px; }
+.supplies-heading h2 { font-size: 12px; letter-spacing: 1.2px; }
+.category-group-title { font-size: 12px; }
+.category-row { font-size: 14px; }
+.board-heading input { font-size: 21px; }
+.note-title { font-size: 16px; }
+.index-card .note-title { font-size: 19px; }
+.help-dialog h2 { font-size: 30px; }
+.help-grid strong { font-size: 14px; }
+.extra-supplies { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 0; }
+.extra-supplies .index-button { justify-content: center; gap: 7px; padding: 12px 6px; border: 1px solid var(--line); border-radius: 8px; }
+.extra-supplies .index-button:hover { background: #eeefe6; }
+.extra-supplies .index-button svg { width: 20px; height: 20px; }
+.extra-supplies .index-button span { font-size: 12px; white-space: nowrap; }
+
+/* Fixed paper size; the original photo remains available through its link. */
+.note.polaroid { width: 286px; min-width: 286px; max-width: 286px; height: 348px; min-height: 348px; max-height: 348px; padding: 14px 14px 0; background: #fffefa; border: 0; border-radius: 1px; }
+.note.polaroid:after { display: none; }
+.polaroid .note-drag { position: absolute; left: 0; right: 0; top: 0; height: 14px; margin: 0; }
+.polaroid .note-drag svg { width: 22px; height: 12px; }
+.polaroid-photo { display: flex; align-items: center; justify-content: center; position: relative; width: 258px; height: 258px; overflow: hidden; background: #e8e8e3; text-decoration: none; cursor: zoom-in; }
+.polaroid-photo:focus-visible { outline-offset: -3px; }
+.note-image { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo-status { color: #797b72; font-size: 12px; }
+.polaroid .polaroid-caption { height: 62px; min-height: 0; max-height: 62px; padding: 10px 0 0; margin: 0; line-height: 1.3; font-size: 16px; font-weight: 550; text-align: center; overflow: hidden; }
+.polaroid .note-actions { top: 5px; right: 5px; bottom: auto; border-radius: 5px; background: #fffefae8; }
+.photo-preview { width: 286px; height: 348px; min-height: 348px; padding: 14px; background: #fffefa; }
+.photo-preview .pin, .photo-preview strong, .photo-preview p { display: none; }
+#preview-photo { width: 258px; height: 258px; object-fit: cover; }
+@media (pointer: coarse) {
+  .polaroid .note-drag { height: 28px; }
+}
+
+.extra-supplies .folder-supply { padding: 9px; }
+.note.manila-folder { width: 300px; min-width: 300px; max-width: 300px; height: 218px; min-height: 218px; max-height: 218px; padding: 0; background: none; box-shadow: none; border-radius: 0; }
+.manila-folder:after { display: none; }
+.folder-open { position: absolute; inset: 0; padding: 0; text-align: left; cursor: pointer; }
+.folder-tab { position: absolute; top: 0; left: 0; margin: 0; min-width: 135px; max-width: 270px; height: 39px; padding: 8px 18px 8px 14px; border: 1px solid #c7a56b; border-radius: 6px 14px 0 0; background: #e8c98d; color: #695535; font-size: 16px; line-height: 22px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.folder-face { position: absolute; left: 0; right: 0; top: 32px; bottom: 0; border: 1px solid #c8a66d; border-radius: 0 5px 5px 5px; background: linear-gradient(#f0d8a7, #ead09a); box-shadow: 0 2px 3px #513d211a; }
+.manila-folder .note-drag { position: absolute; left: 0; right: 0; top: 32px; margin: 0; height: 28px; }
+.manila-folder .note-actions { right: 7px; bottom: 7px; }
+.folder-preview { width: 300px; height: 218px; min-height: 218px; padding: 0; background: none; box-shadow: none; }
+.folder-preview:before { content: ''; position: absolute; inset: 32px 0 0; border: 1px solid #c8a66d; border-radius: 0 5px 5px 5px; background: #efd5a1; }
+.folder-preview strong { position: absolute; left: 0; top: 0; max-width: 270px; height: 34px; padding: 7px 18px 7px 14px; border-radius: 6px 14px 0 0; border: 1px solid #c7a56b; background: #e8c98d; font-size: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.folder-preview .pin, .folder-preview p { display: none; }
+.connection-layer { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; z-index: 200000; pointer-events: none; }
+.connection-layer path { fill: none; stroke-linecap: round; }
+.yarn-base { stroke: #9e3027; stroke-width: 2.4; }
+.yarn-twist { stroke: #e06e57; stroke-width: .7; stroke-dasharray: 1 2; opacity: .9; }
+.connection-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; outline: none; }
+.yarn.is-selected .yarn-base, .yarn:focus-within .yarn-base { stroke: #cf3d2c; stroke-width: 3.5; }
+.connection-pin { pointer-events: none; }
+.note.is-connected .pin { opacity: 0 !important; }
+.viewport.is-connecting, .viewport.is-connecting .note, .viewport.is-connecting .note * { cursor: crosshair !important; }
+.note.is-string-start { outline: 2px solid #a94333; outline-offset: 4px; }
+.extra-supplies .index-button[aria-pressed=true] { background: #efe4dc; border-color: #c17b6a; color: #9b3e2d; }

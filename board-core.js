@@ -10,13 +10,22 @@ export const PALETTES = {
 };
 
 export function parseCategories(text) {
-  const seen = new Set();
-  return text.replace(/^\uFEFF/, '').split(/\r?\n/).map(s => s.trim()).filter(s => {
-    const key = s.toLocaleLowerCase();
-    if (!s || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return parseCategoryFile(text).categories;
+}
+
+export function parseCategoryFile(text) {
+  const names = new Map(), frequent = new Set();
+  for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    const value = line.trim();
+    const starred = value.startsWith('*');
+    const name = (starred ? value.slice(1) : value).trim();
+    if (!name) continue;
+    const key = name.toLocaleLowerCase();
+    if (!names.has(key)) names.set(key, name);
+    if (starred) frequent.add(key);
+  }
+  const categories = [...names.values()];
+  return {categories, frequentCategories: categories.filter(name => frequent.has(name.toLocaleLowerCase()))};
 }
 
 export function categoryColor(name, categories, palette = 'hsv') {
@@ -49,7 +58,7 @@ export function categoryColor(name, categories, palette = 'hsv') {
 }
 
 export function blankBoard() {
-  return {version: 1, name: 'My board', palette: 'hsv', theme: 'natural', notes: [], view: {x: 0, y: 0, zoom: 1}};
+  return {version: 1, name: 'My board', palette: 'hsv', theme: 'natural', notes: [], connections: [], view: {x: 0, y: 0, zoom: 1}};
 }
 
 export function screenToWorld(point, view) {
@@ -87,17 +96,32 @@ export function validateBoard(data) {
   const ids = new Set();
   const finite = n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1e7;
   const notes = data.notes.map(n => {
-    if (!n || typeof n.id !== 'string' || !n.id || n.id.length > 100 || ids.has(n.id) || !['note', 'card'].includes(n.type) || !finite(n.x) || !finite(n.y) || typeof n.text !== 'string' || n.text.length > 100000 || typeof n.category !== 'string' || n.category.length > 10000 || typeof n.title !== 'string' || n.title.length > 10000) throw new Error('This board contains an invalid note. Nothing was changed.');
+    if (!n || typeof n.id !== 'string' || !n.id || n.id.length > 100 || ids.has(n.id) || !['note', 'card', 'image', 'folder'].includes(n.type) || !finite(n.x) || !finite(n.y) || typeof n.text !== 'string' || n.text.length > 100000 || typeof n.category !== 'string' || n.category.length > 10000 || typeof n.title !== 'string' || n.title.length > 10000) throw new Error('This board contains an invalid note. Nothing was changed.');
+    if (n.type === 'image' && (typeof n.imageId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.imageId) || n.text.length > 120)) throw new Error('This board contains an invalid Polaroid. Captions can contain up to 120 characters. Nothing was changed.');
+    if (n.type === 'folder' && (typeof n.folderId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.folderId) || !n.title || n.title.length > 255)) throw new Error('This board contains an invalid folder link. Nothing was changed.');
     ids.add(n.id);
-    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {}), ...(finite(n.height) ? {height: Math.max(120, Math.min(2000, n.height))} : {})};
+    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
+      ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {}),
+      ...(finite(n.height) ? {height: Math.max(120, Math.min(2000, n.height))} : {}),
+    })};
   });
   const view = data.view;
+  if (data.connections !== undefined && (!Array.isArray(data.connections) || data.connections.length > 10000)) throw new Error('This board contains invalid connections. Nothing was changed.');
+  const connectionIds = new Set(), pairs = new Set();
+  const connections = (data.connections || []).map(connection => {
+    if (!connection || typeof connection.id !== 'string' || !connection.id || connection.id.length > 100 || connectionIds.has(connection.id) || !ids.has(connection.from) || !ids.has(connection.to) || connection.from === connection.to) throw new Error('This board contains an invalid connection. Nothing was changed.');
+    const pair = JSON.stringify([connection.from, connection.to].sort());
+    if (pairs.has(pair)) throw new Error('This board contains a duplicate connection. Nothing was changed.');
+    pairs.add(pair); connectionIds.add(connection.id);
+    return {id: connection.id, from: connection.from, to: connection.to};
+  });
   return {
     version: 1,
     name: typeof data.name === 'string' ? data.name.slice(0, 80) || 'My board' : 'My board',
     palette: Object.hasOwn(PALETTES, data.palette) ? data.palette : 'hsv',
     theme: ['natural', 'pale', 'dark'].includes(data.theme) ? data.theme : 'natural',
     notes,
+    connections,
     view: view && finite(view.x) && finite(view.y) && finite(view.zoom) && view.zoom >= .25 && view.zoom <= 2 ? {x: view.x, y: view.y, zoom: view.zoom} : {x: 0, y: 0, zoom: 1},
   };
 }

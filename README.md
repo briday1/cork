@@ -1,12 +1,12 @@
 # Cork
 
-A little room for loose thoughts: a cork board with colorful sticky notes and lined index cards. Put things wherever they make sense, move them around, and let the notes grow with your thoughts.
+A cork board for notes, index cards, Polaroid photos, and local folder links. An empty board shows plain cork.
 
 [Open Cork](https://briday1.github.io/cork/)
 
 ![Cork with the sidebar open, colorful notes, and a ruled index card](./docs/cork-board.jpg)
 
-**Plain HTML, CSS, and JavaScript. No backend, accounts, API keys, npm dependencies, or build step required to use it.** GitHub Pages serves the same static files that run locally.
+**Plain HTML, CSS, and JavaScript. No backend, accounts, API keys, or install step required.** GitHub Pages serves the same static files that run locally.
 
 ## Use the board
 
@@ -17,7 +17,15 @@ A little room for loose thoughts: a cork board with colorful sticky notes and li
 
 **Index card** places a larger, lined card with its own editable title and no category. Both notes and index cards expand with their content. Drag the bottom grip up or down to make a note or card shorter or taller. Drag the bottom-right corner to resize width and height together. Written content always stays visible. Double-click the bottom grip to restore automatic height, or the corner to restore automatic sizing. With a grip focused, use the arrow keys to resize; hold Shift for one-pixel adjustments.
 
-Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Surprise me** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
+Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Random category** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
+
+**Images**, beside **Index card**, opens an image file picker. Choose a file, then click the board to place a fixed 286 × 348 Polaroid. Write a caption of up to 120 characters underneath; captions use the same larger font as note headings and fit within the footer. Click the photo to open the full original in a new tab. Move the Polaroid by its top edge. The image is cropped to a square inside the frame; the original remains intact. PNG, JPEG, WebP, GIF, and AVIF originals are retained; other browser-readable formats are flattened to PNG.
+
+**Folder** opens the system folder picker in supported desktop browsers. Select a folder, then place its manila folder tile on the board. Its name appears on the tab; clicking the tile reopens the system picker at that folder. This is a native folder dialog, not a Finder or Explorer window. Browsers without `showDirectoryPicker` show the Folder button disabled. Folder contents are not read or uploaded. Imported folder links may need to be reconnected on another browser or device.
+
+**String** connects two different items. Click String, then the first item and the second. Red yarn joins their thumbtacks and follows them as you move, resize, pan, and zoom. Press Escape to cancel. Select a string and press Delete to remove it, or use Undo. Deleting an item also removes its strings; Undo restores both. Connections save with the board and appear in PDF exports.
+
+In the sidebar’s **⋯** menu, **Export PDF** downloads one page cropped closely around all board items, including items outside the current view. It preserves their arrangement and rotation, uses lossless 4× rendering (384 dpi at original size), and leaves out cork, controls, selection outlines, and shadows. The page has no background fill; most PDF viewers display it as white. Paper colors and photo frames remain. Very large individual notes use a lower capture scale to respect browser canvas limits. The PDF is image-based, so text is not selectable.
 
 Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
 
@@ -46,12 +54,14 @@ Shortcuts do not fire while you type in a text field.
 Edit **[`categories.txt`](./categories.txt)** in the repository root. Each nonempty line is a category:
 
 ```text
-Ideas
+* Ideas
 Questions
 Characters
 Places
 Something completely different
 ```
+
+Prefix a line with `*` (with or without a space) to put that category in **Frequently used** at the top of the list. The marker is hidden from labels and notes. Other categories appear below. Searching filters both groups, and Random category still uses the entire list. Marking a category does not change its color or position in the underlying category order.
 
 Commit the file to `main`. Once the Pages workflow finishes, refresh the app. It fetches `categories.txt` directly using a relative URL, so it also works under GitHub Pages project paths and other static hosting paths.
 
@@ -79,11 +89,11 @@ Colors are sampled across the category count in file order. HSV excludes the dup
 
 ## Saving and backups
 
-The board automatically saves to **localStorage in your current browser on this device**, including notes, positions, widths, heights, theme, color map, board name, and view. The save indicator reports browser-storage failures rather than claiming the board was saved.
+The board automatically saves notes, positions, widths, heights, theme, color map, board name, and view to **localStorage in your current browser on this device**. Original images, photo previews, and local folder handles use IndexedDB so images do not fill the smaller localStorage quota. The save indicator reports browser-storage failures rather than claiming the board was saved.
 
 - Notes are **not** written back into the repository and are **not** shared with other visitors or other devices.
 - Clearing site data, private-browsing cleanup, or moving to another browser/origin can remove or separate the saved board.
-- Use the sidebar’s **⋯ → Export board** for a JSON backup. **Import board** validates the file and asks before replacing the current board. Import is undoable in the current session.
+- Use the sidebar’s **⋯ → Export board** for a JSON backup including original images. **Import board** validates the file and asks before replacing the current board. Import is undoable in the current session. Folder handles are specific to a browser/device and are reconnected with the system picker when necessary.
 - If another tab changes the same board, this tab pauses saving to avoid overwriting it. Export this tab’s copy if needed, then reload to use the saved board.
 - A damaged stored board is left untouched and automatic saving pauses. Recover the original storage before intentionally clearing the damaged copy.
 
@@ -126,5 +136,7 @@ The `dist/` build copies the public files and stamps their URLs with a content v
 | `styles.css` | Cork, paper, responsive layouts, and themes |
 | `app.js` | Placement, cursor preview, dragging, editing, pan/zoom, saving, export/import |
 | `board-core.js` | Category parsing, color maps, coordinate transforms, import validation, list continuation |
+| `image-store.js` | Browser-local image originals, thumbnails, folder handles, and image backups |
+| `export-pdf.js`, `export-core.js` | High-resolution PDF capture, transparent page, and tight bounds |
 | `tests/core.test.mjs` | Tests for category loading rules, 100 HSV colors, positioning math, lists, and backups |
 | `.github/workflows/pages.yml` | Automated checks and GitHub Pages publishing |

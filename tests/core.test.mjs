@@ -1,9 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCategories, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, revealNote, focusNoteView, continueList, PALETTES} from '../board-core.js';
+import {parseCategories, parseCategoryFile, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, revealNote, focusNoteView, continueList, PALETTES} from '../board-core.js';
 
 test('category files accept BOM, CRLF, whitespace, and case-insensitive duplicates', () => {
   assert.deepEqual(parseCategories('\uFEFFIdeas\r\n\r\n Questions  \r\nideas\n#This is a category\n'), ['Ideas', 'Questions', '#This is a category']);
+});
+
+test('a leading asterisk marks a frequent category without changing its name or file order', () => {
+  const text = '\uFEFFQuestions\r\n * Ideas \r\n*Questions\nideas\n*\n  *Inspiration\n#Still a category';
+  assert.deepEqual(parseCategoryFile(text), {
+    categories: ['Questions', 'Ideas', 'Inspiration', '#Still a category'],
+    frequentCategories: ['Questions', 'Ideas', 'Inspiration'],
+  });
+  assert.deepEqual(parseCategories(text), ['Questions', 'Ideas', 'Inspiration', '#Still a category']);
+  assert.deepEqual(parseCategoryFile('Ideas\nQuestions').frequentCategories, []);
 });
 
 test('100 categories get 100 distinct HSV colors, without repeating the endpoint', () => {
@@ -72,6 +82,34 @@ test('manual note height survives saving and import, with safe size limits', () 
   assert.equal(validateBoard(input).notes[0].height, 120);
   input.notes[0].height = 1e6;
   assert.equal(validateBoard(input).notes[0].height, 2000);
+});
+
+test('Polaroid references and captions round trip while paper size stays fixed', () => {
+  const board = {...blankBoard(), notes: [{id: 'photo', type: 'image', imageId: 'original-photo', category: '', title: 'Photo.png', text: 'Caption', x: -30, y: 80, tilt: 2}]};
+  assert.deepEqual(validateBoard(JSON.parse(JSON.stringify(board))), board);
+  const resized = structuredClone(board); resized.notes[0].width = 700; resized.notes[0].height = 1200;
+  assert.deepEqual(validateBoard(resized), board);
+  const invalid = structuredClone(board); invalid.notes[0].imageId = '../anything';
+  assert.throws(() => validateBoard(invalid));
+  invalid.notes[0].imageId = 'photo'; invalid.notes[0].text = 'x'.repeat(121);
+  assert.throws(() => validateBoard(invalid));
+});
+
+test('folder links retain their name and reference without a portable filesystem path', () => {
+  const input = {...blankBoard(), notes: [{id: 'folder', type: 'folder', folderId: 'local-project', category: '', title: 'Project files', text: '', x: 120, y: -90, tilt: -1}]};
+  assert.deepEqual(validateBoard(JSON.parse(JSON.stringify(input))), input);
+  const invalid = structuredClone(input); delete invalid.notes[0].folderId;
+  assert.throws(() => validateBoard(invalid));
+});
+
+test('connections round trip and reject self-links, duplicates, and missing endpoints', () => {
+  const input = sample();
+  input.notes.push({...input.notes[0], id: 'two', x: 500});
+  input.connections = [{id: 'thread', from: 'one', to: 'two'}];
+  assert.deepEqual(validateBoard(JSON.parse(JSON.stringify(input))), input);
+  for (const link of [{id: 'bad', from: 'one', to: 'one'}, {id: 'bad', from: 'one', to: 'missing'}, {id: 'duplicate', from: 'two', to: 'one'}]) {
+    assert.throws(() => validateBoard({...input, connections: [...input.connections, link]}));
+  }
 });
 
 test('bad imports are rejected without silently dropping notes', () => {

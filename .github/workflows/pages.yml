@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: '22'
       - name: Check JavaScript syntax
-        run: node --check app.js && node --check board-core.js
+        run: node --check app.js && node --check board-core.js && node --check image-store.js && node --check export-core.js && node --check export-pdf.js
       - name: Test board behavior
         run: npm test
       - name: Prepare static files

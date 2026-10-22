@@ -1,4 +1,6 @@
-import {STORAGE_KEY, parseCategories, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
+import {STORAGE_KEY, parseCategoryFile, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
+import {prepareImage, putImage, getImage, exportImages, importImages, putFolder, getFolder} from './image-store.js';
+import {connectionGeometry} from './export-core.js';
 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
@@ -10,6 +12,7 @@ const corkTileSize = {width: 1024, height: 768};
 const storageKey = `${STORAGE_KEY}:${location.pathname.replace(/index\.html$/, '')}`;
 let board = blankBoard();
 let categories = [];
+let frequentCategories = new Set();
 let selected = null;
 let placement = null;
 let pointer = null;
@@ -20,11 +23,16 @@ let categoryLoadFailed = false;
 let saveTimer;
 let toastTimer;
 let pendingImport;
+let pendingImages = [];
+let pdfExporting = false;
+let stringMode = false, stringStart = null, selectedString = null, stringFrame = 0, stringLayer;
 let savingBlocked = false;
 let startupProblem = '';
 const undoStack = [];
 const redoStack = [];
 const noteElements = new Map();
+const imageResources = new Map();
+const folderHandles = new Map();
 const activePointers = new Map();
 const compactLayout = matchMedia('(max-width: 680px), (max-height: 500px) and (pointer: coarse)');
 let mobileEditing = null;
@@ -91,6 +99,7 @@ function updateHistory() {
 
 function historyStep(from, to) {
   if (!from.length) return;
+  setStringMode(false);
   cancelPlacement();
   document.activeElement?.blur();
   to.push(JSON.stringify(board));
@@ -117,10 +126,13 @@ async function loadCategories() {
   try {
     const response = await fetch(new URL('./categories.txt', import.meta.url), {cache: 'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    categories = parseCategories(await response.text());
+    const parsed = parseCategoryFile(await response.text());
+    categories = parsed.categories;
+    frequentCategories = new Set(parsed.frequentCategories);
   } catch (error) {
     categoryLoadFailed = true;
     categories = [];
+    frequentCategories.clear();
     console.warn('Cork could not load categories.txt:', error.message);
   }
   renderCategories();
@@ -135,7 +147,17 @@ function renderCategories() {
   const shown = categories.filter(category => category.toLocaleLowerCase().includes(query));
   const counts = new Map();
   for (const note of board.notes) if (note.type === 'note') counts.set(note.category, (counts.get(note.category) || 0) + 1);
-  for (const category of shown) {
+  const groups = frequentCategories.size ? [
+    ['Frequently used', shown.filter(category => frequentCategories.has(category))],
+    ['Other categories', shown.filter(category => !frequentCategories.has(category))],
+  ] : [[null, shown]];
+  for (const [heading, names] of groups) {
+    if (!names.length) continue;
+    if (heading) {
+      const title = document.createElement('h3'); title.className = 'category-group-title'; title.textContent = heading;
+      list.append(title);
+    }
+    for (const category of names) {
     const button = document.createElement('button');
     button.className = 'category-row';
     button.classList.toggle('is-active', placement?.type === 'note' && placement.category === category);
@@ -148,10 +170,10 @@ function renderCategories() {
     button.append(chip, label, count);
     button.addEventListener('click', () => startPlacement('note', category));
     list.append(button);
+    }
   }
   $('category-total').textContent = categories.length;
   $('random-note').disabled = !categories.length;
-  $('empty-start').disabled = !categories.length;
   $('category-message').hidden = Boolean(categories.length);
   $('category-message').textContent = categoryLoadFailed ? 'Couldn’t load categories.txt. You can still use index cards.' : 'Add one category per line in categories.txt to get started. Index cards are ready to use.';
   $('retry-categories').hidden = !categoryLoadFailed;
@@ -180,7 +202,77 @@ function updateNoteColors() {
 
 function updateCounts() {
   $('note-count').textContent = `${board.notes.length} ${board.notes.length === 1 ? 'note' : 'notes'}`;
-  $('empty-state').hidden = Boolean(board.notes.length);
+  $('board-tip').hidden = !board.notes.length;
+  $('export-pdf').disabled = pdfExporting || !board.notes.length;
+  $('add-string').disabled = board.notes.length < 2;
+  if (board.notes.length < 2 && stringMode) setStringMode(false);
+}
+
+function queueStrings() {
+  cancelAnimationFrame(stringFrame);
+  stringFrame = requestAnimationFrame(renderStrings);
+}
+
+function setStringMode(active) {
+  stringMode = active; stringStart = null;
+  viewport.classList.toggle('is-connecting', active);
+  $('add-string').setAttribute('aria-pressed', String(active));
+  $('board-tip').textContent = active ? 'Select the first item.' : 'Scroll to zoom. Drag the cork to pan.';
+  for (const element of noteElements.values()) element.classList.remove('is-string-start');
+}
+
+function chooseStringItem(id) {
+  if (!stringStart) {
+    stringStart = id; noteElements.get(id)?.classList.add('is-string-start');
+    $('board-tip').textContent = 'Select a different item.';
+    return;
+  }
+  if (id === stringStart) return;
+  if (!board.connections.some(link => link.from === stringStart && link.to === id || link.from === id && link.to === stringStart)) {
+    record(); board.connections.push({id: crypto.randomUUID(), from: stringStart, to: id}); saveNow();
+  }
+  setStringMode(false); renderStrings();
+}
+
+function removeString(id) {
+  record(); board.connections = board.connections.filter(connection => connection.id !== id);
+  selectedString = null; renderStrings(); saveNow();
+}
+
+function renderStrings() {
+  if (!stringLayer?.isConnected) {
+    stringLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    stringLayer.classList.add('connection-layer'); stringLayer.setAttribute('aria-label', 'Connections');
+    world.prepend(stringLayer);
+  }
+  stringLayer.replaceChildren();
+  const connected = new Set(), pins = new Map();
+  const svg = (tag, attributes) => {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    return node;
+  };
+  for (const connection of board.connections) {
+    const from = board.notes.find(note => note.id === connection.from), to = board.notes.find(note => note.id === connection.to);
+    if (!from || !to) continue;
+    const rect = note => ({...note, width: parseFloat(getComputedStyle(noteElements.get(note.id)).width)});
+    const curve = connectionGeometry(rect(from), rect(to));
+    const d = `M ${curve.from.x} ${curve.from.y} Q ${curve.control.x} ${curve.control.y} ${curve.to.x} ${curve.to.y}`;
+    const group = svg('g', {class: `yarn${selectedString === connection.id ? ' is-selected' : ''}`});
+    group.append(svg('path', {d, class: 'yarn-base'}), svg('path', {d, class: 'yarn-twist'}));
+    const hit = svg('path', {d, class: 'connection-hit', tabindex: '0', role: 'button', 'aria-label': 'Connection. Press Delete to remove.'});
+    hit.addEventListener('click', event => { event.stopPropagation(); setSelected(null); selectedString = connection.id; renderStrings(); });
+    hit.addEventListener('focus', () => { selectedString = connection.id; group.classList.add('is-selected'); });
+    hit.addEventListener('keydown', event => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); removeString(connection.id); } });
+    group.append(hit); stringLayer.append(group);
+    connected.add(from.id); connected.add(to.id); pins.set(from.id, curve.from); pins.set(to.id, curve.to);
+  }
+  for (const [id, point] of pins) {
+    const pin = svg('g', {class: 'connection-pin', 'data-note-id': id});
+    pin.append(svg('circle', {cx: point.x + 1, cy: point.y + 1.5, r: 4.3, fill: '#4c241b', opacity: '.22'}), svg('circle', {cx: point.x, cy: point.y, r: 4, fill: '#aa4a37', stroke: '#763327', 'stroke-width': '.6'}), svg('circle', {cx: point.x - 1, cy: point.y - 1, r: 1.3, fill: '#f0b3a0'}));
+    stringLayer.append(pin);
+  }
+  for (const [id, element] of noteElements) element.classList.toggle('is-connected', connected.has(id));
 }
 
 function updateCorkTexture(view) {
@@ -229,6 +321,7 @@ function localPoint(event) {
 }
 
 function setSelected(id) {
+  if (id) { selectedString = null; queueStrings(); }
   if (selected) noteElements.get(selected)?.classList.remove('is-selected');
   selected = id;
   if (id) noteElements.get(id)?.classList.add('is-selected');
@@ -243,6 +336,14 @@ function bringForward(id) {
 }
 
 function autosize(note, element) {
+  if (note.type === 'folder') return;
+  if (note.type === 'image') {
+    const caption = element.querySelector('.polaroid-caption');
+    let size = 16;
+    caption.style.fontSize = `${size}px`;
+    while (caption.scrollHeight > caption.clientHeight + 1 && size > 8) caption.style.fontSize = `${--size}px`;
+    return;
+  }
   const baseWidth = note.type === 'card' ? 344 : 248;
   const maxAutoWidth = note.type === 'card' ? 480 : 370;
   const longest = Math.max(0, ...`${note.type === 'card' ? note.title : note.category}\n${note.text}`.split('\n').map(line => line.length));
@@ -269,6 +370,7 @@ function autosize(note, element) {
     const content = element.querySelector('.note-content');
     element.style.setProperty('--rule-start', `${content.offsetTop - 7}px`);
   }
+  queueStrings();
 }
 
 function revealOnBoard(note, element) {
@@ -349,7 +451,103 @@ function actionButton(label, iconName, callback) {
   return button;
 }
 
+function getImageResource(id) {
+  if (!imageResources.has(id)) imageResources.set(id, getImage(id).then(asset => ({
+    ...asset, previewUrl: URL.createObjectURL(asset.thumbnail), originalUrl: URL.createObjectURL(asset.original),
+  })).catch(error => { imageResources.delete(id); throw error; }));
+  return imageResources.get(id);
+}
+
+function wireNoteMovement(element, note, handle) {
+  handle.addEventListener('keydown', event => {
+    const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[event.key];
+    if (!direction) return;
+    event.preventDefault(); record();
+    const step = event.shiftKey ? 1 : 10;
+    note.x += direction[0] * step; note.y += direction[1] * step;
+    element.style.left = `${note.x}px`; element.style.top = `${note.y}px`; saveSoon();
+    queueStrings();
+  });
+  element.addEventListener('pointerdown', () => { setSelected(note.id); bringForward(note.id); });
+  element.addEventListener('focusin', () => {
+    if (!compactLayout.matches) { revealOnBoard(note, element); saveSoon(); }
+  });
+}
+
+function buildPolaroid(note, index) {
+  const element = document.createElement('article');
+  element.className = 'note polaroid'; element.dataset.noteId = note.id;
+  element.style.left = `${note.x}px`; element.style.top = `${note.y}px`;
+  element.style.zIndex = String(index + 1); element.style.setProperty('--tilt', `${note.tilt}deg`);
+  element.setAttribute('aria-label', 'Polaroid');
+  const handle = document.createElement('div'); handle.className = 'note-drag'; handle.tabIndex = 0; handle.setAttribute('role', 'button');
+  handle.setAttribute('aria-label', 'Move Polaroid. Drag or use arrow keys.'); handle.append(icon('grip'));
+  const photo = document.createElement('a'); photo.className = 'polaroid-photo'; photo.target = '_blank'; photo.rel = 'noopener noreferrer';
+  photo.setAttribute('aria-label', 'Open full image in a new tab');
+  const message = document.createElement('span'); message.className = 'photo-status'; message.textContent = 'Loading image…';
+  const image = document.createElement('img'); image.className = 'note-image'; image.alt = note.title || 'Photo'; image.draggable = false; image.hidden = true;
+  photo.append(message, image);
+  photo.addEventListener('click', event => { if (Date.now() < suppressNoteClickUntil || handMode || spaceHeld || !photo.hasAttribute('href')) event.preventDefault(); });
+  getImageResource(note.imageId).then(asset => {
+    image.src = asset.previewUrl; image.hidden = false; message.remove(); photo.href = asset.originalUrl;
+  }).catch(error => { message.textContent = 'Image unavailable'; console.warn(error.message); });
+  const caption = document.createElement('textarea');
+  caption.className = 'note-content polaroid-caption'; caption.rows = 2; caption.maxLength = 120; caption.value = note.text;
+  caption.placeholder = 'Caption'; caption.setAttribute('aria-label', 'Polaroid caption');
+  caption.addEventListener('focus', record);
+  caption.addEventListener('input', () => { note.text = caption.value; autosize(note, element); saveSoon(); });
+  useMobileFocus(caption, note);
+  const actions = document.createElement('div'); actions.className = 'note-actions';
+  actions.append(actionButton('Duplicate photo', 'copy', () => duplicateNote(note)), actionButton('Delete photo', 'trash', () => removeNote(note.id)));
+  wireNoteMovement(element, note, handle);
+  element.append(handle, photo, caption, actions);
+  noteElements.set(note.id, element); world.append(element); autosize(note, element);
+  return element;
+}
+
+function loadFolder(id) {
+  if (!folderHandles.has(id)) folderHandles.set(id, getFolder(id).catch(() => null));
+  return folderHandles.get(id);
+}
+
+async function openFolder(note, label, button) {
+  if (!window.showDirectoryPicker) return toast('System folder dialogs are not supported in this browser.');
+  try {
+    const previous = await loadFolder(note.folderId);
+    const handle = await window.showDirectoryPicker({id: 'cork-folder', mode: 'read', ...(previous ? {startIn: previous} : {})});
+    if (previous && await handle.isSameEntry(previous)) return;
+    const id = crypto.randomUUID();
+    await putFolder(id, handle); folderHandles.set(id, Promise.resolve(handle));
+    record(); note.folderId = id; note.title = handle.name;
+    label.textContent = handle.name; label.title = handle.name;
+    button.setAttribute('aria-label', `Open folder ${handle.name} in the system folder dialog`);
+    button.closest('article').setAttribute('aria-label', `${handle.name} folder`);
+    button.closest('article').querySelector('.note-drag').setAttribute('aria-label', `Move ${handle.name} folder. Drag or use arrow keys.`);
+    saveNow();
+  } catch (error) { if (error.name !== 'AbortError') toast(error.message || 'Could not open the system folder dialog.'); }
+}
+
+function buildFolder(note, index) {
+  const element = document.createElement('article'); element.className = 'note manila-folder'; element.dataset.noteId = note.id;
+  element.style.left = `${note.x}px`; element.style.top = `${note.y}px`; element.style.zIndex = String(index + 1);
+  element.style.setProperty('--tilt', `${note.tilt}deg`); element.setAttribute('aria-label', `${note.title} folder`);
+  const open = document.createElement('button'); open.className = 'folder-open'; open.setAttribute('aria-label', `Open folder ${note.title} in the system folder dialog`);
+  const label = document.createElement('h2'); label.className = 'folder-tab'; label.textContent = note.title; label.title = note.title;
+  const face = document.createElement('span'); face.className = 'folder-face'; face.setAttribute('aria-hidden', 'true');
+  open.append(label, face); open.addEventListener('click', () => { if (Date.now() >= suppressNoteClickUntil && !handMode && !spaceHeld) openFolder(note, label, open); });
+  const handle = document.createElement('div'); handle.className = 'note-drag'; handle.tabIndex = 0; handle.setAttribute('role', 'button');
+  handle.setAttribute('aria-label', `Move ${note.title} folder. Drag or use arrow keys.`); handle.append(icon('grip'));
+  const actions = document.createElement('div'); actions.className = 'note-actions';
+  actions.append(actionButton('Duplicate folder', 'copy', () => duplicateNote(note)), actionButton('Delete folder', 'trash', () => removeNote(note.id)));
+  wireNoteMovement(element, note, handle);
+  element.append(open, handle, actions); noteElements.set(note.id, element); world.append(element);
+  loadFolder(note.folderId);
+  return element;
+}
+
 function buildNote(note, index) {
+  if (note.type === 'folder') return buildFolder(note, index);
+  if (note.type === 'image') return buildPolaroid(note, index);
   const element = document.createElement('article');
   element.className = `note${note.type === 'card' ? ' index-card' : ''}`;
   element.dataset.noteId = note.id;
@@ -367,7 +565,7 @@ function buildNote(note, index) {
   let title;
   if (note.type === 'card') {
     title = document.createElement('textarea'); title.value = note.title; title.rows = 1;
-    title.placeholder = 'A thought…'; title.setAttribute('aria-label', 'Index card title');
+    title.placeholder = 'Title'; title.setAttribute('aria-label', 'Index card title');
     title.addEventListener('focus', record);
     title.addEventListener('input', () => { note.title = title.value; autosize(note, element); saveSoon(); });
     useMobileFocus(title, note);
@@ -377,7 +575,7 @@ function buildNote(note, index) {
   title.className = `note-title${note.type === 'card' ? ' note-title-input' : ''}`;
   const content = document.createElement('textarea');
   content.className = 'note-content'; content.rows = 3; content.value = note.text;
-  content.placeholder = note.type === 'card' ? 'Let it spill out…' : 'What’s on your mind?';
+  content.placeholder = note.type === 'card' ? 'Card text' : 'Note text';
   content.setAttribute('aria-label', note.type === 'card' ? 'Index card content' : `${note.category} note content`);
   content.addEventListener('focus', record);
   content.addEventListener('input', () => { note.text = content.value; autosize(note, element); saveSoon(); });
@@ -422,18 +620,7 @@ function buildNote(note, index) {
     note.height = Math.max(120, Math.min(2000, element.offsetHeight + (event.key === 'ArrowDown' ? step : -step)));
     autosize(note, element); saveSoon();
   });
-  handle.addEventListener('keydown', event => {
-    const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[event.key];
-    if (!direction) return;
-    event.preventDefault(); record();
-    const step = event.shiftKey ? 1 : 10;
-    note.x += direction[0] * step; note.y += direction[1] * step;
-    element.style.left = `${note.x}px`; element.style.top = `${note.y}px`; saveSoon();
-  });
-  element.addEventListener('pointerdown', () => { setSelected(note.id); bringForward(note.id); });
-  element.addEventListener('focusin', () => {
-    if (!compactLayout.matches) { revealOnBoard(note, element); saveSoon(); }
-  });
+  wireNoteMovement(element, note, handle);
   element.append(title, content, actions, resize, resizeHeight);
   noteElements.set(note.id, element);
   world.append(element);
@@ -445,6 +632,7 @@ function renderBoard() {
   world.replaceChildren(); noteElements.clear();
   $('board-name').value = board.name;
   board.notes.forEach(buildNote);
+  renderStrings();
   renderCategories(); renderPalette(); updateCounts(); applyView();
 }
 
@@ -476,22 +664,26 @@ function setSidebar(open, remember = false) {
   });
 }
 
-function startPlacement(type, category = '') {
+function startPlacement(type, category = '', assetId = null, folderName = '') {
+  setStringMode(false);
   handMode = false; spaceHeld = false;
   updateHandMode(); setSelected(null);
-  placement = {type, category};
+  placement = {type, category, imageId: type === 'image' ? assetId : null, folderId: type === 'folder' ? assetId : null, folderName};
   viewport.classList.add('is-placing');
   $('placement-preview').hidden = false;
   $('placement-preview').classList.toggle('index-preview', type === 'card');
+  $('placement-preview').classList.toggle('photo-preview', type === 'image');
+  $('placement-preview').classList.toggle('folder-preview', type === 'folder');
+  $('preview-photo').hidden = type !== 'image';
+  if (type === 'image') getImageResource(assetId).then(asset => { if (placement?.imageId === assetId) $('preview-photo').src = asset.previewUrl; });
   $('placement-preview').style.setProperty('--note-color', colorFor(category));
-  $('preview-title').textContent = type === 'card' ? 'Notes' : category;
+  $('preview-title').textContent = type === 'card' ? 'Notes' : type === 'image' ? '' : type === 'folder' ? folderName : category;
   $('preview-hint').textContent = matchMedia('(pointer:coarse)').matches ? 'Tap to pin it here' : 'Click to pin it here';
-  $('placement-label').textContent = type === 'card' ? 'Pick a spot for your index card' : `Pick a spot for “${category}”`;
+  $('placement-label').textContent = type === 'card' ? 'Choose a position for the index card' : type === 'image' ? 'Choose a position for the photo' : type === 'folder' ? 'Choose a position for the folder' : `Choose a position for “${category}”`;
   $('placement-bar').hidden = false;
-  $('empty-state').classList.add('placing');
   if (compactLayout.matches) setSidebar(false);
   renderCategories();
-  const width = type === 'card' ? 344 : 248;
+  const width = type === 'card' ? 344 : type === 'image' ? 286 : type === 'folder' ? 300 : 248;
   pointer = {x: Math.max(16, (viewport.clientWidth - width * board.view.zoom) / 2), y: Math.max(60, viewport.clientHeight / 2 - 100)};
   movePreview(pointer);
 }
@@ -505,7 +697,7 @@ function movePreview(point) {
 function cancelPlacement() {
   placement = null; viewport.classList.remove('is-placing');
   $('placement-preview').hidden = true; $('placement-bar').hidden = true;
-  $('empty-state').classList.remove('placing'); renderCategories();
+  renderCategories();
 }
 
 function placeNote(point) {
@@ -513,19 +705,22 @@ function placeNote(point) {
   record();
   const location = screenToWorld(point, board.view);
   const note = {id: crypto.randomUUID(), type: placement.type, category: placement.category, title: placement.type === 'card' ? 'Notes' : placement.category, text: '', x: location.x, y: location.y, tilt: (Math.random() - .5) * 2.4};
+  if (placement.type === 'image') { note.imageId = placement.imageId; note.title = placement.imageName || 'Photo'; }
+  if (placement.type === 'folder') { note.folderId = placement.folderId; note.title = placement.folderName; }
   board.notes.push(note);
   const element = buildNote(note, board.notes.length - 1);
   cancelPlacement(); setSelected(note.id); updateCounts(); saveNow();
   revealOnBoard(note, element); saveSoon();
-  const input = element.querySelector('.note-content');
+  const input = element.querySelector('.note-content, .folder-open');
   if (compactLayout.matches) input.focus({preventScroll: true});
   else requestAnimationFrame(() => input.focus({preventScroll: true}));
 }
 
 function removeNote(id) {
   record(); board.notes = board.notes.filter(n => n.id !== id);
+  board.connections = board.connections.filter(connection => connection.from !== id && connection.to !== id);
   noteElements.get(id)?.remove(); noteElements.delete(id); setSelected(null);
-  renderCategories(); updateCounts(); saveNow(); toast('Note removed.', true);
+  renderStrings(); renderCategories(); updateCounts(); saveNow(); toast('Item removed.', true);
 }
 
 function duplicateNote(note) {
@@ -534,7 +729,7 @@ function duplicateNote(note) {
   board.notes.push(copy); const element = buildNote(copy, board.notes.length - 1);
   setSelected(copy.id); updateCounts(); renderCategories(); saveNow();
   revealOnBoard(copy, element); saveSoon();
-  element.querySelector('.note-content').focus({preventScroll: true});
+  element.querySelector('.note-content, .folder-open').focus({preventScroll: true});
 }
 
 function addBullets(note, content, element) {
@@ -572,7 +767,14 @@ function fitView() {
 }
 
 viewport.addEventListener('pointerdown', event => {
-  if (event.target.closest('.board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
+  if (stringMode && event.target.closest('.note')) { event.preventDefault(); event.stopPropagation(); }
+}, true);
+viewport.addEventListener('click', event => {
+  if (!stringMode || !event.target.closest('.note')) return;
+  event.preventDefault(); event.stopPropagation(); chooseStringItem(event.target.closest('.note').dataset.noteId);
+}, true);
+viewport.addEventListener('pointerdown', event => {
+  if (event.target.closest('.board-footer, .placement-bar, .sidebar-toggle, .mobile-done, .connection-hit')) return;
   if (event.button !== 0 && event.button !== 1) return;
   activePointers.set(event.pointerId, localPoint(event));
   if (activePointers.size >= 2) {
@@ -634,6 +836,7 @@ viewport.addEventListener('pointermove', event => {
   } else if (gesture.type === 'note') {
     gesture.note.x = gesture.x + dx / board.view.zoom; gesture.note.y = gesture.y + dy / board.view.zoom;
     gesture.element.style.left = `${gesture.note.x}px`; gesture.element.style.top = `${gesture.note.y}px`; gesture.element.classList.add('is-dragging');
+    queueStrings();
   } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
     if (gesture.type === 'resize') gesture.note.width = Math.max(190, Math.min(800, gesture.width + dx / board.view.zoom));
     gesture.note.height = Math.max(120, Math.min(2000, gesture.height + dy / board.view.zoom));
@@ -679,8 +882,34 @@ viewport.addEventListener('wheel', event => {
 
 $('category-search').addEventListener('input', renderCategories);
 $('random-note').addEventListener('click', randomCategory);
-$('empty-start').addEventListener('click', randomCategory);
 $('add-card').addEventListener('click', () => startPlacement('card'));
+$('add-image').addEventListener('click', () => $('image-file').click());
+$('add-folder').disabled = !window.showDirectoryPicker;
+if (!window.showDirectoryPicker) $('add-folder').title = 'System folder dialogs are not supported in this browser';
+$('add-folder').addEventListener('click', async () => {
+  try {
+    const handle = await window.showDirectoryPicker({id: 'cork-folder', mode: 'read'});
+    const id = crypto.randomUUID(); await putFolder(id, handle); folderHandles.set(id, Promise.resolve(handle));
+    startPlacement('folder', '', id, handle.name);
+  } catch (error) { if (error.name !== 'AbortError') toast(error.message || 'Could not select this folder.'); }
+});
+$('add-string').addEventListener('click', () => {
+  const active = !stringMode; cancelPlacement(); handMode = false; spaceHeld = false; updateHandMode(); setStringMode(active);
+  if (compactLayout.matches) setSidebar(false);
+});
+$('image-file').addEventListener('change', async event => {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  $('add-image').disabled = true;
+  try {
+    const asset = await prepareImage(file);
+    await putImage(asset);
+    await getImageResource(asset.id);
+    startPlacement('image', '', asset.id);
+    placement.imageName = asset.name;
+  } catch (error) { toast(error.message || 'Could not add this image.'); }
+  finally { $('add-image').disabled = false; }
+});
 $('cancel-placement').addEventListener('click', cancelPlacement);
 $('retry-categories').addEventListener('click', loadCategories);
 $('palette').addEventListener('change', () => { record(); board.palette = $('palette').value; renderCategories(); renderPalette(); updateNoteColors(); saveNow(); });
@@ -711,39 +940,88 @@ $('show-help').addEventListener('click', () => { if (compactLayout.matches) setS
 $('close-help').addEventListener('click', () => $('help-dialog').close());
 $('help-done').addEventListener('click', () => $('help-dialog').close());
 
-$('export-board').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify({...board, exportedAt: new Date().toISOString()}, null, 2)], {type: 'application/json'});
+$('export-board').addEventListener('click', async () => {
+  closeMenu();
+  const snapshot = validateBoard(JSON.parse(JSON.stringify(board)));
+  $('export-board').disabled = true;
+  try {
+  const images = await exportImages(snapshot.notes);
+  const blob = new Blob([JSON.stringify({...snapshot, images, exportedAt: new Date().toISOString()}, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  const name = board.name.replace(/[^a-z0-9 _-]/gi, '').trim() || 'cork-board';
+  const name = snapshot.name.replace(/[^a-z0-9 _-]/gi, '').trim() || 'cork-board';
   link.href = url; link.download = `${name}-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
-  closeMenu(); toast('Board exported. Keep the JSON file as your backup.');
+  toast('Board exported, including original images. Keep the JSON file as your backup.');
+  } catch (error) { toast(`Could not export the board. ${error.message}`); }
+  finally { $('export-board').disabled = false; }
+});
+$('export-pdf').addEventListener('click', async () => {
+  closeMenu();
+  if (pdfExporting || !board.notes.length) return;
+  pdfExporting = true;
+  $('export-pdf').disabled = true;
+  $('export-pdf').setAttribute('aria-busy', 'true');
+  toast('Preparing PDF…');
+  try {
+    const {snapshotNotes, createBoardPdf} = await import('./export-pdf.js');
+    await Promise.all(board.notes.filter(note => note.type === 'image').map(note => getImageResource(note.imageId)));
+    await Promise.all([...world.querySelectorAll('.note-image')].map(image => image.decode()));
+    const name = board.name;
+    const notes = snapshotNotes(board.notes, noteElements);
+    const bytes = await createBoardPdf(name, notes, structuredClone(board.connections), (done, total) => {
+      if (total > 5) toast(`Preparing PDF… ${done} of ${total} notes`);
+    });
+    const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'}));
+    const link = document.createElement('a');
+    const filename = name.replace(/[^a-z0-9 _-]/gi, '').trim() || 'cork-board';
+    link.href = url; link.download = `${filename}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('PDF exported. Cropped to your notes, without the cork.');
+  } catch (error) {
+    console.error('Cork could not export the PDF:', error);
+    toast('Couldn’t create the PDF. Your board is safe; please try again.');
+  } finally {
+    pdfExporting = false;
+    $('export-pdf').removeAttribute('aria-busy');
+    updateCounts();
+  }
 });
 $('import-board').addEventListener('click', () => { closeMenu(); $('import-file').click(); });
 $('import-file').addEventListener('change', async event => {
   const file = event.target.files[0]; event.target.value = '';
   if (!file) return;
   try {
-    if (file.size > 10 * 1024 * 1024) throw new Error('Choose a board file smaller than 10 MB.');
-    pendingImport = validateBoard(JSON.parse(await file.text()));
+    if (file.size > 100 * 1024 * 1024) throw new Error('Choose a board file smaller than 100 MB.');
+    const data = JSON.parse(await file.text());
+    pendingImport = validateBoard(data);
+    pendingImages = await importImages(data, pendingImport);
     $('import-summary').textContent = `“${pendingImport.name}” contains ${pendingImport.notes.length} ${pendingImport.notes.length === 1 ? 'note' : 'notes'}.`;
     $('import-dialog').showModal();
-  } catch (error) { pendingImport = null; toast(error instanceof SyntaxError ? 'That file isn’t a valid Cork JSON export. Nothing was changed.' : error.message); }
+  } catch (error) { pendingImport = null; pendingImages = []; toast(error instanceof SyntaxError ? 'That file isn’t a valid Cork JSON export. Nothing was changed.' : error.message); }
 });
-$('cancel-import').addEventListener('click', () => { pendingImport = null; $('import-dialog').close(); });
-$('import-dialog').addEventListener('cancel', () => { pendingImport = null; });
-$('confirm-import').addEventListener('click', () => {
+$('cancel-import').addEventListener('click', () => { pendingImport = null; pendingImages = []; $('import-dialog').close(); });
+$('import-dialog').addEventListener('cancel', event => { if ($('confirm-import').disabled) { event.preventDefault(); return; } pendingImport = null; pendingImages = []; });
+$('confirm-import').addEventListener('click', async () => {
   if (!pendingImport) return;
-  record(); cancelPlacement(); board = pendingImport; pendingImport = null;
+  $('confirm-import').disabled = true;
+  $('cancel-import').disabled = true;
+  try {
+  for (const asset of pendingImages) await putImage(asset);
+  record(); setStringMode(false); cancelPlacement(); board = pendingImport; pendingImport = null;
+  pendingImages = [];
   $('import-dialog').close(); setSelected(null); renderBoard();
   saveNow(); toast('Board imported.', true);
+  } catch (error) { toast(error.message); }
+  finally { $('confirm-import').disabled = false; $('cancel-import').disabled = false; }
 });
 
 document.addEventListener('keydown', event => {
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { cancelPlacement(); closeMenu(); if (compactLayout.matches) setSidebar(false); return; }
+  if (event.key === 'Escape') { setStringMode(false); cancelPlacement(); closeMenu(); if (compactLayout.matches) setSidebar(false); return; }
+  if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); historyStep(event.shiftKey ? redoStack : undoStack, event.shiftKey ? undoStack : redoStack); return; }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); historyStep(redoStack, undoStack); return; }
@@ -752,6 +1030,7 @@ document.addEventListener('keydown', event => {
   else if (event.key.toLowerCase() === 'i') { event.preventDefault(); startPlacement('card'); }
   else if (event.key === '/') { event.preventDefault(); setSidebar(true); $('category-search').focus(); }
   else if (event.key === ' ') { event.preventDefault(); spaceHeld = true; updateHandMode(); }
+  else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedString) { event.preventDefault(); removeString(selectedString); }
   else if ((event.key === 'Delete' || event.key === 'Backspace') && selected) { event.preventDefault(); removeNote(selected); }
   else if (event.key === 'Enter' && placement) { event.preventDefault(); placeNote(pointer || {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2}); }
 });
