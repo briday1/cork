@@ -431,6 +431,9 @@ function buildNote(note, index) {
     element.style.left = `${note.x}px`; element.style.top = `${note.y}px`; saveSoon();
   });
   element.addEventListener('pointerdown', () => { setSelected(note.id); bringForward(note.id); });
+  element.addEventListener('focusin', () => {
+    if (!compactLayout.matches) { revealOnBoard(note, element); saveSoon(); }
+  });
   element.append(title, content, actions, resize, resizeHeight);
   noteElements.set(note.id, element);
   world.append(element);

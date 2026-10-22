@@ -80,7 +80,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 .board-menu svg{width:16px;height:16px}
 .board-menu a span{margin-left:auto}
 .menu-rule{height:1px;background:#e9ebdf;margin:5px}
-.viewport{position:relative;flex:1;overflow:hidden;background:#c2a07a;touch-action:none;cursor:var(--grab);outline:none;isolation:isolate}
+.viewport{position:relative;flex:1;overflow:hidden;overflow:clip;background:#c2a07a;touch-action:none;cursor:var(--grab);outline:none;isolation:isolate}
 .cork-texture{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;transform-origin:0 0;will-change:transform;z-index:-1}
 .cork-tile{position:absolute;width:1025px;height:769px;background:url("./assets/cork-fine.webp") 0 0 / 100% 100% no-repeat;transform-origin:center}
 .board-world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0}
