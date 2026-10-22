@@ -3,6 +3,10 @@ import {STORAGE_KEY, parseCategories, categoryColor, blankBoard, screenToWorld, 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
 const world = $('board-world');
+const corkTexture = document.querySelector('.cork-texture');
+const corkTiles = new Map();
+// The photograph is 2048 × 1536: two image pixels per board unit at 100%.
+const corkTileSize = {width: 1024, height: 768};
 const storageKey = `${STORAGE_KEY}:${location.pathname.replace(/index\.html$/, '')}`;
 let board = blankBoard();
 let categories = [];
@@ -179,9 +183,40 @@ function updateCounts() {
   $('empty-state').hidden = Boolean(board.notes.length);
 }
 
+function updateCorkTexture(view) {
+  corkTexture.style.transform = world.style.transform;
+  const {width, height} = corkTileSize;
+  const left = Math.floor(-view.x / view.zoom / width) - 1;
+  const right = Math.floor((viewport.clientWidth - view.x) / view.zoom / width) + 1;
+  const top = Math.floor(-view.y / view.zoom / height) - 1;
+  const bottom = Math.floor((viewport.clientHeight - view.y) / view.zoom / height) + 1;
+  const visible = new Set();
+  for (let row = top; row <= bottom; row++) {
+    for (let column = left; column <= right; column++) {
+      const key = `${column},${row}`;
+      visible.add(key);
+      if (corkTiles.has(key)) continue;
+      const tile = document.createElement('div');
+      tile.className = 'cork-tile';
+      tile.style.left = `${column * width}px`;
+      tile.style.top = `${row * height}px`;
+      // Mirrored neighbors share the same photo edge, with no hard tile seams.
+      tile.style.transform = `scale(${column % 2 ? -1 : 1}, ${row % 2 ? -1 : 1})`;
+      corkTexture.append(tile);
+      corkTiles.set(key, tile);
+    }
+  }
+  for (const [key, tile] of corkTiles) {
+    if (visible.has(key)) continue;
+    tile.remove();
+    corkTiles.delete(key);
+  }
+}
+
 function applyView() {
   const v = board.view;
   world.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.zoom})`;
+  updateCorkTexture(v);
   $('zoom-reset').textContent = `${Math.round(v.zoom * 100)}%`;
   $('zoom-in').disabled = v.zoom >= 2;
   $('zoom-out').disabled = v.zoom <= .25;
@@ -702,6 +737,7 @@ window.addEventListener('storage', event => {
   toast('This board changed in another tab. Export this copy if needed, then reload to use the latest saved board.');
 });
 window.addEventListener('resize', () => { updateVisibleHeight(); applyView(); });
+if (window.ResizeObserver) new ResizeObserver(() => updateCorkTexture(board.view)).observe(viewport);
 compactLayout.addEventListener('change', () => {
   setSidebar(!compactLayout.matches && desktopSidebarOpen);
   if (!compactLayout.matches) {
