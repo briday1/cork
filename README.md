@@ -75,6 +75,8 @@ Leading/trailing spaces and empty lines are ignored. Duplicate names are removed
 
 No category count is hard-coded. Maintainers can still edit the repository list to change the default for people who have not loaded a local list; it is fetched without caching. App updates and changes to that default never replace someone’s loaded local list.
 
+![Category file controls in the sidebar, with Load file and Save a copy.](./docs/cork-categories.jpg)
+
 ## Appearance and color maps
 
 The board uses a bundled photograph of real cork. The grain moves and scales with the notes as you pan and zoom, and mirrored photo edges keep the surface continuous. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. Asset source and license are in [assets/README.md](./assets/README.md).
