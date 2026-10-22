@@ -8,4 +8,4 @@ Original: 4928 × 3264 JPEG. Bundled web asset: 3072 × 2035 WebP, quality 84, w
 
 ## Cursors
 
-`grab.svg` and `grabbing.svg` are original vector cursor artwork. The SVG sources stay sharp on high-density displays; CSS supplies the platform hand cursor as a fallback.
+`grab.svg` and `grabbing.svg` are original vector cursor artwork. The SVG sources are accompanied by 2× and 3× PNG renderings selected with CSS image-set so high-density displays do not upscale a small cursor bitmap. CSS supplies the platform hand cursor as a fallback.

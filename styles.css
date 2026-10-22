@@ -86,7 +86,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 .viewport.is-panning,.viewport.is-panning *{cursor:var(--grabbing)!important;user-select:none!important}
 .viewport.is-placing{cursor:crosshair}
 .viewport.hand-mode .note textarea,.viewport.hand-mode .note input,.viewport.hand-mode .note button{pointer-events:none}
-.viewport.hand-mode .note{position:absolute;width:248px;min-height:184px;padding:0 19px 21px;background:linear-gradient(175deg,#ffffff12,transparent 45%,#00000004),var(--note-color,#f2de9c);color:#3f4438;box-shadow:0 1px 2px #513d2126,1px 5px 9px -4px #513d2138;border-radius:1px 1px 3px 2px;transform:rotate(var(--tilt,0deg));transform-origin:50% 20px;cursor:default;transition:box-shadow .12s;touch-action:auto}
+.viewport.hand-mode .note{cursor:var(--grab)}
 .empty-state{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);text-align:center;width:300px;max-width:80%;pointer-events:none;color:#5b4c39}
 .empty-state h1{font-family:Georgia,"Times New Roman",serif;font-size:32px;letter-spacing:-.7px;font-weight:400;margin:30px 0 12px}
 .empty-state p{font-size:12px;line-height:1.85;color:#6e5d46;margin:0}
@@ -106,7 +106,7 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 .view-controls>span{width:1px;height:16px;background:#e2e3d4;margin:0 2px}
 .view-controls .icon-button{height:32px;width:32px;font-size:20px;font-weight:350}
 .zoom-level{width:46px;font-size:11px;color:#6c7661;padding:8px 0;font-variant-numeric:tabular-nums}
-.note{position:absolute;width:248px;min-height:184px;padding:0 19px 21px;background:var(--note-color,#f2de9c);color:#414133;box-shadow:1px 4px 9px #49351e26,0 1px 2px #5e482b26;border-radius:1px 2px 3px 1px;transform:rotate(var(--tilt,0deg));transform-origin:50% 20px;cursor:default;transition:box-shadow .12s;touch-action:auto}
+.note{position:absolute;width:248px;min-height:184px;padding:0 19px 21px;background:linear-gradient(175deg,#ffffff12,transparent 45%,#00000004),var(--note-color,#f2de9c);color:#3f4438;box-shadow:0 1px 2px #513d2126,1px 5px 9px -4px #513d2138;border-radius:1px 1px 3px 2px;transform:rotate(var(--tilt,0deg));transform-origin:50% 20px;cursor:default;transition:box-shadow .12s;touch-action:auto}
 .note:after{content:"";position:absolute;left:0;right:0;top:0;height:27px;background:linear-gradient(#ffffff16,#ffffff06);pointer-events:none}
 .note.is-selected{outline:1px solid #52694388;outline-offset:3px}
 .note.is-dragging{box-shadow:0 2px 4px #49351e26,3px 12px 18px -4px #49351e45;z-index:100000!important;cursor:var(--grabbing)}
@@ -414,4 +414,12 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
   .sidebar-toggle { width: 44px; height: 44px; left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); }
   .sidebar.is-open { visibility: visible; }
   .placement-bar { max-width: calc(100% - 132px); }
+}
+
+/* Explicit high-density cursor artwork prevents OS bitmap upscaling. */
+@supports (cursor: image-set(url("./assets/grab.svg") 1x) 16 13, grab) {
+  :root {
+    --grab: image-set(url("./assets/grab.svg") 1x, url("./assets/grab@2x.png") 2x, url("./assets/grab@3x.png") 3x) 16 13, grab;
+    --grabbing: image-set(url("./assets/grabbing.svg") 1x, url("./assets/grabbing@2x.png") 2x, url("./assets/grabbing@3x.png") 3x) 16 16, grabbing;
+  }
 }
