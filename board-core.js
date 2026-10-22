@@ -62,6 +62,26 @@ export function zoomAt(view, zoom, point) {
   return {x: point.x - world.x * next, y: point.y - world.y * next, zoom: next};
 }
 
+// Bring a note into reach without changing its position on the board.
+export function revealNote(view, rect, size, fitWidth = false, bottom = 88) {
+  const margin = 16, top = 24;
+  const zoom = fitWidth ? Math.max(.25, Math.min(view.zoom, (size.width - margin * 2) / rect.width)) : view.zoom;
+  let {x, y} = view;
+  const width = rect.width * zoom, height = rect.height * zoom;
+  const left = rect.x * zoom + x, upper = rect.y * zoom + y;
+  const availableHeight = Math.max(0, size.height - top - bottom);
+  if (left < margin || width > size.width - margin * 2) x += margin - left;
+  else if (left + width > size.width - margin) x -= left + width - size.width + margin;
+  if (upper < top || height > availableHeight) y += top - upper;
+  else if (upper + height > size.height - bottom) y -= upper + height - size.height + bottom;
+  return {x, y, zoom};
+}
+
+export function focusNoteView(rect, size) {
+  const zoom = Math.max(.25, Math.min(1.6, (size.width - 32) / rect.width));
+  return {zoom, x: (size.width - rect.width * zoom) / 2 - rect.x * zoom, y: 16 - rect.y * zoom};
+}
+
 export function validateBoard(data) {
   if (!data || data.version !== 1 || !Array.isArray(data.notes) || data.notes.length > 5000) throw new Error('Choose a Cork board export (version 1, up to 5,000 notes).');
   const ids = new Set();

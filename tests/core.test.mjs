@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCategories, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, continueList, PALETTES} from '../board-core.js';
+import {parseCategories, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, revealNote, focusNoteView, continueList, PALETTES} from '../board-core.js';
 
 test('category files accept BOM, CRLF, whitespace, and case-insensitive duplicates', () => {
   assert.deepEqual(parseCategories('\uFEFFIdeas\r\n\r\n Questions  \r\nideas\n#This is a category\n'), ['Ideas', 'Questions', '#This is a category']);
@@ -32,6 +32,29 @@ test('bullets and numbered lists continue, and empty bullets end the list', () =
   assert.deepEqual(continueList('• First\n• ', 10), {text: '• First\n', cursor: 8});
   assert.equal(continueList('plain text', 10), null);
   assert.equal(continueList('• First', 2, 7), null);
+});
+
+test('phone focus fits the actual note and keeps a lower caret above the keyboard', () => {
+  for (const width of [320, 390, 430]) {
+    const rect = {x: -400, y: 700, width: Math.min(344, width - 32), height: 220};
+    const view = focusNoteView(rect, {width});
+    assert.ok(rect.x * view.zoom + view.x >= 15.99);
+    assert.ok((rect.x + rect.width) * view.zoom + view.x <= width - 15.99);
+    const caret = {x: rect.x + 30, y: rect.y + 600, width: 2, height: 24};
+    const typingView = revealNote(view, caret, {width, height: 235}, false, 16);
+    assert.equal(typingView.zoom, view.zoom);
+    assert.ok(caret.y * typingView.zoom + typingView.y >= 23.99);
+    assert.ok((caret.y + caret.height) * typingView.zoom + typingView.y <= 219.01);
+  }
+});
+
+test('an oversized card stays reachable on a narrow board without moving the card', () => {
+  const rect = {x: 500, y: -100, width: 344, height: 800};
+  const original = {...rect};
+  const view = revealNote({x: 0, y: 0, zoom: 1}, rect, {width: 320, height: 500}, true);
+  assert.ok((rect.x + rect.width) * view.zoom + view.x <= 304.01);
+  assert.equal(rect.y * view.zoom + view.y, 24);
+  assert.deepEqual(rect, original);
 });
 
 const sample = () => ({...blankBoard(), notes: [{id: 'one', type: 'note', category: 'Gone from file', title: 'Gone from file', text: '<script>text only</script>', x: -20, y: 500, tilt: 1, width: 300}]});

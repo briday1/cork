@@ -7,7 +7,7 @@ A little room for loose thoughts: a cork board with colorful sticky notes and li
 ## Use the board
 
 1. Choose a category in the left sidebar. A preview note, with the category in bold, follows your cursor over the board.
-2. Click anywhere on the cork to pin it. On a phone or tablet, choose a category from the **+** supplies menu, then tap a spot.
+2. Click anywhere on the cork to pin it. On a phone or tablet, open the sidebar with the small button in the top-left corner, choose a category, then tap a spot.
 3. Type in the note. It grows vertically as you write, and longer lines can widen it. The text is plain text; the list button adds bullets and Enter continues bulleted or numbered lists. Press Enter on an empty bullet to finish the list.
 4. Grab a note by its **top edge** to move it anywhere. You can also focus that edge with Tab and move it with the arrow keys; hold Shift for one-pixel adjustments.
 
@@ -15,9 +15,9 @@ A little room for loose thoughts: a cork board with colorful sticky notes and li
 
 Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Surprise me** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
 
-Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel pans; Ctrl/Cmd+wheel zooms around the cursor. Two-finger pinch also zooms on touch screens. Escape cancels a note before it is placed.
+Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key. Drag empty cork to pan. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
 
-Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The top-right menu holds board export/import and the full guide. Click the board name to rename it.
+Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for export/import and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
 
 ### Keyboard shortcuts
 
@@ -55,6 +55,8 @@ No category count is hard-coded. The default file is just a set of starter categ
 
 ## Appearance and color maps
 
+The board uses a bundled photograph of real cork, without procedural noise or a repeating tile grid. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. Asset source and license are in [assets/README.md](./assets/README.md).
+
 At the bottom of the sidebar, choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
 
 | Color map | Character |
@@ -75,7 +77,7 @@ The board automatically saves to **localStorage in your current browser on this 
 
 - Notes are **not** written back into the repository and are **not** shared with other visitors or other devices.
 - Clearing site data, private-browsing cleanup, or moving to another browser/origin can remove or separate the saved board.
-- Use **⋯ → Export board** for a JSON backup. **Import board** validates the file and asks before replacing the current board. Import is undoable in the current session.
+- Use the sidebar’s **⋯ → Export board** for a JSON backup. **Import board** validates the file and asks before replacing the current board. Import is undoable in the current session.
 - If another tab changes the same board, this tab pauses saving to avoid overwriting it. Export this tab’s copy if needed, then reload to use the saved board.
 - A damaged stored board is left untouched and automatic saving pauses. Recover the original storage before intentionally clearing the damaged copy.
 

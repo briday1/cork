@@ -1,4 +1,4 @@
-import {STORAGE_KEY, parseCategories, categoryColor, blankBoard, screenToWorld, zoomAt, validateBoard, continueList} from './board-core.js';
+import {STORAGE_KEY, parseCategories, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
@@ -22,6 +22,14 @@ const undoStack = [];
 const redoStack = [];
 const noteElements = new Map();
 const activePointers = new Map();
+const compactLayout = matchMedia('(max-width: 680px), (max-height: 500px) and (pointer: coarse)');
+let mobileEditing = null;
+let caretFrame = 0;
+let largestVisibleHeight = window.innerHeight;
+let lastViewportWidth = window.innerWidth;
+let suppressNoteClickUntil = 0;
+let desktopSidebarOpen = true;
+try { desktopSidebarOpen = localStorage.getItem(`${storageKey}:sidebar`) !== 'closed'; } catch { /* Board saving reports unavailable storage. */ }
 
 try {
   const saved = localStorage.getItem(storageKey);
@@ -209,6 +217,81 @@ function autosize(note, element) {
     area.style.height = '0px';
     area.style.height = `${Math.max(area.classList.contains('note-content') ? 92 : 22, area.scrollHeight)}px`;
   }
+  if (note.type === 'card') {
+    // Start the ruling below the header even when the title wraps or grows.
+    const content = element.querySelector('.note-content');
+    element.style.setProperty('--rule-start', `${content.offsetTop - 7}px`);
+  }
+}
+
+function revealOnBoard(note, element) {
+  board.view = revealNote(board.view, {x: note.x, y: note.y, width: element.offsetWidth, height: element.offsetHeight}, {width: viewport.clientWidth, height: viewport.clientHeight}, compactLayout.matches);
+  applyView();
+}
+
+function updateVisibleHeight() {
+  const visible = window.visualViewport;
+  // Leave native browser magnification available for accessibility.
+  if (visible && Math.abs(visible.scale - 1) > .01) return;
+  const height = visible?.height || window.innerHeight;
+  if (Math.abs(window.innerWidth - lastViewportWidth) > 40) largestVisibleHeight = height;
+  else if (!mobileEditing) largestVisibleHeight = Math.max(largestVisibleHeight, height);
+  lastViewportWidth = window.innerWidth;
+  document.documentElement.style.setProperty('--visible-height', `${height}px`);
+  document.documentElement.style.setProperty('--visible-top', `${visible?.offsetTop || 0}px`);
+  document.body.classList.toggle('keyboard-open', Boolean(mobileEditing && height < largestVisibleHeight - 100));
+  queueCaretReveal();
+}
+
+function queueCaretReveal() {
+  cancelAnimationFrame(caretFrame);
+  if (!mobileEditing || !compactLayout.matches) return;
+  caretFrame = requestAnimationFrame(() => {
+    if (!mobileEditing || gesture || document.activeElement !== mobileEditing.input) return;
+    const {note, input} = mobileEditing;
+    // Measure the real wrapping so long notes can follow the insertion point.
+    const style = getComputedStyle(input);
+    const mirror = document.createElement('div');
+    mirror.style.cssText = 'position:absolute;top:0;left:-100000px;visibility:hidden;pointer-events:none;white-space:pre-wrap;';
+    for (const property of ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'textIndent', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'boxSizing', 'wordBreak', 'overflowWrap']) mirror.style[property] = style[property];
+    mirror.style.width = `${input.clientWidth}px`;
+    const cursor = input.selectionDirection === 'backward' ? input.selectionStart : input.selectionEnd;
+    mirror.textContent = input.value.slice(0, cursor);
+    const marker = document.createElement('span'); marker.textContent = '\u200b'; mirror.append(marker);
+    document.body.append(mirror);
+    const rect = {x: note.x + input.offsetLeft + marker.offsetLeft, y: note.y + input.offsetTop + marker.offsetTop - input.scrollTop, width: 2, height: parseFloat(style.lineHeight) || 24};
+    mirror.remove();
+    board.view = revealNote(board.view, rect, {width: viewport.clientWidth, height: viewport.clientHeight}, false, document.body.classList.contains('keyboard-open') ? 16 : 88);
+    applyView(); saveSoon();
+  });
+}
+
+function useMobileFocus(input, note) {
+  input.addEventListener('click', () => {
+    if (compactLayout.matches && Date.now() >= suppressNoteClickUntil) input.focus({preventScroll: true});
+  });
+  input.addEventListener('focus', () => {
+    if (!compactLayout.matches) return;
+    mobileEditing = {note, input}; setSelected(note.id);
+    $('finish-editing').hidden = false;
+    document.body.classList.add('note-editing');
+    // Let the native tap position the caret before moving the camera.
+    requestAnimationFrame(() => {
+      if (mobileEditing?.input !== input || gesture?.moved || gesture?.type === 'pinch') return;
+      const element = noteElements.get(note.id);
+      board.view = focusNoteView({x: note.x, y: note.y, width: element.offsetWidth}, {width: viewport.clientWidth});
+      applyView(); updateVisibleHeight(); saveSoon();
+    });
+  });
+  input.addEventListener('input', queueCaretReveal);
+  input.addEventListener('blur', () => {
+    if (mobileEditing?.input !== input) return;
+    mobileEditing = null; cancelAnimationFrame(caretFrame);
+    $('finish-editing').hidden = true;
+    document.body.classList.remove('note-editing', 'keyboard-open');
+    // Keep the camera where the user was writing; pinch or Fit steps back out.
+    saveSoon();
+  });
 }
 
 function actionButton(label, iconName, callback) {
@@ -240,6 +323,7 @@ function buildNote(note, index) {
     title.placeholder = 'A thought…'; title.setAttribute('aria-label', 'Index card title');
     title.addEventListener('focus', record);
     title.addEventListener('input', () => { note.title = title.value; autosize(note, element); saveSoon(); });
+    useMobileFocus(title, note);
   } else {
     title = document.createElement('h2'); title.textContent = note.category;
   }
@@ -250,6 +334,7 @@ function buildNote(note, index) {
   content.setAttribute('aria-label', note.type === 'card' ? 'Index card content' : `${note.category} note content`);
   content.addEventListener('focus', record);
   content.addEventListener('input', () => { note.text = content.value; autosize(note, element); saveSoon(); });
+  useMobileFocus(content, note);
   content.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       const result = continueList(content.value, content.selectionStart, content.selectionEnd);
@@ -305,10 +390,24 @@ function randomCategory() {
   startPlacement('note', options[Math.floor((random[0] / 4294967296) * options.length)]);
 }
 
-function setSidebar(open) {
+function setSidebar(open, remember = false) {
+  open = Boolean(open);
   $('sidebar').classList.toggle('is-open', open);
-  $('sidebar-scrim').hidden = !open;
+  $('sidebar').classList.toggle('is-collapsed', !open);
+  $('sidebar').inert = !open;
+  document.body.classList.toggle('sidebar-open', open);
+  $('sidebar-scrim').hidden = !open || !compactLayout.matches;
   $('toggle-sidebar').setAttribute('aria-expanded', String(open));
+  if (!open) closeMenu();
+  if (!open && $('sidebar').contains(document.activeElement)) $('toggle-sidebar').focus({preventScroll: true});
+  if (remember && !compactLayout.matches) {
+    desktopSidebarOpen = open;
+    try { localStorage.setItem(`${storageKey}:sidebar`, open ? 'open' : 'closed'); } catch { /* UI preference is optional. */ }
+  }
+  requestAnimationFrame(() => {
+    board.notes.forEach(note => autosize(note, noteElements.get(note.id)));
+    applyView();
+  });
 }
 
 function startPlacement(type, category = '') {
@@ -324,8 +423,10 @@ function startPlacement(type, category = '') {
   $('placement-label').textContent = type === 'card' ? 'Pick a spot for your index card' : `Pick a spot for “${category}”`;
   $('placement-bar').hidden = false;
   $('empty-state').classList.add('placing');
-  setSidebar(false); renderCategories();
-  pointer = {x: viewport.clientWidth / 2 - (type === 'card' ? 100 : 70), y: viewport.clientHeight / 2 - 80};
+  if (compactLayout.matches) setSidebar(false);
+  renderCategories();
+  const width = type === 'card' ? 344 : 248;
+  pointer = {x: Math.max(16, (viewport.clientWidth - width * board.view.zoom) / 2), y: Math.max(60, viewport.clientHeight / 2 - 100)};
   movePreview(pointer);
 }
 
@@ -349,13 +450,10 @@ function placeNote(point) {
   board.notes.push(note);
   const element = buildNote(note, board.notes.length - 1);
   cancelPlacement(); setSelected(note.id); updateCounts(); saveNow();
-  // Keep a newly placed note within reach when pinning near a viewport edge.
-  const right = (note.x + element.offsetWidth + 15) * board.view.zoom + board.view.x;
-  const bottom = (note.y + element.offsetHeight + 90) * board.view.zoom + board.view.y;
-  if (right > viewport.clientWidth) board.view.x -= right - viewport.clientWidth;
-  if (bottom > viewport.clientHeight) board.view.y -= bottom - viewport.clientHeight;
-  applyView(); saveSoon();
-  requestAnimationFrame(() => element.querySelector('.note-content').focus({preventScroll: true}));
+  revealOnBoard(note, element); saveSoon();
+  const input = element.querySelector('.note-content');
+  if (compactLayout.matches) input.focus({preventScroll: true});
+  else requestAnimationFrame(() => input.focus({preventScroll: true}));
 }
 
 function removeNote(id) {
@@ -369,6 +467,7 @@ function duplicateNote(note) {
   const copy = {...note, id: crypto.randomUUID(), x: note.x + 28, y: note.y + 28};
   board.notes.push(copy); const element = buildNote(copy, board.notes.length - 1);
   setSelected(copy.id); updateCounts(); renderCategories(); saveNow();
+  revealOnBoard(copy, element); saveSoon();
   element.querySelector('.note-content').focus({preventScroll: true});
 }
 
@@ -382,7 +481,9 @@ function addBullets(note, content, element) {
   const already = lines.every(line => /^\s*[-*•] /.test(line));
   const replacement = lines.map(line => already ? line.replace(/^(\s*)[-*•] /, '$1') : /^\s*[-*•] /.test(line) ? line : `• ${line}`).join('\n');
   content.setRangeText(replacement, from, until, 'end');
-  note.text = content.value; autosize(note, element); saveSoon(); content.focus({preventScroll: true});
+  note.text = content.value;
+  element.querySelector('.note-content').value = note.text;
+  autosize(note, element); saveSoon(); content.focus({preventScroll: true});
 }
 
 function updateHandMode() {
@@ -405,31 +506,34 @@ function fitView() {
 }
 
 viewport.addEventListener('pointerdown', event => {
-  if (event.target.closest('.board-footer, .placement-bar')) return;
+  if (event.target.closest('.board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
   if (event.button !== 0 && event.button !== 1) return;
   activePointers.set(event.pointerId, localPoint(event));
-  if (activePointers.size === 2) {
+  if (activePointers.size >= 2) {
+    if (gesture?.type === 'pinch') { viewport.setPointerCapture(event.pointerId); return; }
     if (gesture?.element) gesture.element.classList.remove('is-dragging', 'is-resizing');
+    if (mobileEditing) mobileEditing.input.blur();
     const [a, b] = [...activePointers.values()];
     gesture = {type: 'pinch', distance: Math.hypot(b.x - a.x, b.y - a.y), center: {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2}, view: {...board.view}, moved: true};
-    viewport.setPointerCapture(event.pointerId); return;
+    for (const id of activePointers.keys()) viewport.setPointerCapture(id);
+    event.preventDefault(); return;
   }
   const point = localPoint(event);
   const noteElement = event.target.closest('.note');
   const controls = event.target.closest('.note-actions, .note-content, .note-title-input');
   if (placement) {
-    gesture = {type: 'place', start: point, moved: false}; viewport.setPointerCapture(event.pointerId); return;
+    gesture = {type: 'place', pointerId: event.pointerId, start: point, moved: false}; viewport.setPointerCapture(event.pointerId); return;
   }
   if (controls && !handMode && !spaceHeld) return;
   const note = noteElement && board.notes.find(n => n.id === noteElement.dataset.noteId);
   if (note && !handMode && !spaceHeld) {
     const resize = event.target.closest('.note-resize');
     if (!resize && !event.target.closest('.note-drag')) return;
-    gesture = {type: resize ? 'resize' : 'note', start: point, note, element: noteElement, x: note.x, y: note.y, width: noteElement.offsetWidth, moved: false};
+    gesture = {type: resize ? 'resize' : 'note', pointerId: event.pointerId, start: point, note, element: noteElement, x: note.x, y: note.y, width: noteElement.offsetWidth, moved: false};
     event.preventDefault();
   } else {
     document.activeElement?.blur(); setSelected(null);
-    gesture = {type: 'pan', start: point, view: {...board.view}, moved: false};
+    gesture = {type: 'pan', pointerId: event.pointerId, start: point, view: {...board.view}, moved: false};
     event.preventDefault();
   }
   viewport.setPointerCapture(event.pointerId);
@@ -449,6 +553,7 @@ viewport.addEventListener('pointermove', event => {
     board.view.x += center.x - gesture.center.x; board.view.y += center.y - gesture.center.y;
     applyView(); return;
   }
+  if (event.pointerId !== gesture.pointerId) return;
   const dx = point.x - gesture.start.x; const dy = point.y - gesture.start.y;
   if (!gesture.moved && Math.hypot(dx, dy) < 4) return;
   if (!gesture.moved) {
@@ -471,27 +576,37 @@ viewport.addEventListener('pointermove', event => {
 function endGesture(event) {
   activePointers.delete(event.pointerId);
   if (!gesture) return;
-  if (gesture.type === 'place' && event.type !== 'pointercancel') placeNote(localPoint(event));
+  if (gesture.type !== 'pinch' && event.pointerId !== gesture.pointerId) return;
+  if (gesture.moved || gesture.type === 'pinch') suppressNoteClickUntil = Date.now() + 350;
+  if (gesture.type === 'pinch' && activePointers.size) {
+    if (activePointers.size >= 2) {
+      const [a, b] = [...activePointers.values()];
+      gesture = {type: 'pinch', distance: Math.hypot(b.x - a.x, b.y - a.y), center: {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2}, view: {...board.view}, moved: true};
+    } else {
+      const [[pointerId, point]] = activePointers;
+      gesture = {type: 'pan', pointerId, start: point, view: {...board.view}, moved: true};
+    }
+    saveSoon(); return;
+  }
+  if (gesture.type === 'place' && event.type === 'pointerup') placeNote(localPoint(event));
   if (gesture.element) gesture.element.classList.remove('is-dragging', 'is-resizing');
   viewport.classList.remove('is-panning');
   gesture = null;
   if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
   saveSoon();
 }
-viewport.addEventListener('pointerup', endGesture);
-viewport.addEventListener('pointercancel', endGesture);
+window.addEventListener('pointerup', endGesture);
+window.addEventListener('pointercancel', endGesture);
 viewport.addEventListener('pointerleave', () => { if (placement && !gesture) $('placement-preview').hidden = true; });
 viewport.addEventListener('pointerenter', () => { if (placement) $('placement-preview').hidden = false; });
 viewport.addEventListener('wheel', event => {
-  if (event.target.closest('.note-content, .note-title-input') && !event.ctrlKey && !event.metaKey) return;
+  // Leave note text and floating controls alone; the cork itself always zooms.
+  if (event.target.closest('.note-content, .note-title-input, .board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
   event.preventDefault();
-  if (event.ctrlKey || event.metaKey) changeZoom(Math.exp(-event.deltaY * .006), localPoint(event));
-  else {
-    const scale = event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? viewport.clientHeight : 1;
-    if (event.shiftKey) board.view.x -= (event.deltaY || event.deltaX) * scale;
-    else { board.view.x -= event.deltaX * scale; board.view.y -= event.deltaY * scale; }
-    applyView(); saveSoon();
-  }
+  const unit = event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? viewport.clientHeight : 1;
+  // Clamp unusually large wheel ticks without losing high-resolution trackpad input.
+  const delta = Math.max(-200, Math.min(200, event.deltaY * unit));
+  changeZoom(Math.exp(-delta * .0025), localPoint(event));
 }, {passive: false});
 
 $('category-search').addEventListener('input', renderCategories);
@@ -515,13 +630,16 @@ $('zoom-reset').addEventListener('click', () => { board.view = zoomAt(board.view
 $('fit-view').addEventListener('click', fitView);
 $('pan-mode').addEventListener('click', () => { cancelPlacement(); handMode = !handMode; updateHandMode(); });
 $('reset-view').addEventListener('click', () => { board.view = {x: 0, y: 0, zoom: 1}; applyView(); saveSoon(); closeMenu(); });
-$('toggle-sidebar').addEventListener('click', () => setSidebar(!$('sidebar').classList.contains('is-open')));
+$('toggle-sidebar').addEventListener('click', () => setSidebar(true, true));
 $('sidebar-scrim').addEventListener('click', () => setSidebar(false));
+$('close-sidebar').addEventListener('click', () => setSidebar(false, true));
+$('finish-editing').addEventListener('click', () => { document.activeElement?.blur(); mobileEditing?.input.blur(); saveNow(); });
+document.addEventListener('selectionchange', queueCaretReveal);
 
 function closeMenu() { $('board-menu').hidden = true; $('board-menu-button').setAttribute('aria-expanded', 'false'); }
 $('board-menu-button').addEventListener('click', () => { const open = $('board-menu').hidden; $('board-menu').hidden = !open; $('board-menu-button').setAttribute('aria-expanded', String(open)); });
 document.addEventListener('click', event => { if (!event.target.closest('.menu-wrap')) closeMenu(); });
-$('show-help').addEventListener('click', () => { setSidebar(false); $('help-dialog').showModal(); });
+$('show-help').addEventListener('click', () => { if (compactLayout.matches) setSidebar(false); $('help-dialog').showModal(); });
 $('close-help').addEventListener('click', () => $('help-dialog').close());
 $('help-done').addEventListener('click', () => $('help-dialog').close());
 
@@ -557,7 +675,7 @@ $('confirm-import').addEventListener('click', () => {
 
 document.addEventListener('keydown', event => {
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { cancelPlacement(); closeMenu(); setSidebar(false); return; }
+  if (event.key === 'Escape') { cancelPlacement(); closeMenu(); if (compactLayout.matches) setSidebar(false); return; }
   if (editing || document.querySelector('dialog[open]')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); historyStep(event.shiftKey ? redoStack : undoStack, event.shiftKey ? undoStack : redoStack); return; }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); historyStep(redoStack, undoStack); return; }
@@ -570,7 +688,11 @@ document.addEventListener('keydown', event => {
   else if (event.key === 'Enter' && placement) { event.preventDefault(); placeNote(pointer || {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2}); }
 });
 document.addEventListener('keyup', event => { if (event.key === ' ') { spaceHeld = false; updateHandMode(); } });
-window.addEventListener('blur', () => { spaceHeld = false; updateHandMode(); });
+window.addEventListener('blur', () => {
+  spaceHeld = false; updateHandMode();
+  if (gesture?.element) gesture.element.classList.remove('is-dragging', 'is-resizing');
+  gesture = null; activePointers.clear(); viewport.classList.remove('is-panning');
+});
 window.addEventListener('pagehide', saveNow);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
 window.addEventListener('storage', event => {
@@ -579,8 +701,20 @@ window.addEventListener('storage', event => {
   setSaveStatus('Changed in another tab — saving paused', true);
   toast('This board changed in another tab. Export this copy if needed, then reload to use the latest saved board.');
 });
-window.addEventListener('resize', () => { if (window.innerWidth > 680) setSidebar(false); applyView(); });
+window.addEventListener('resize', () => { updateVisibleHeight(); applyView(); });
+compactLayout.addEventListener('change', () => {
+  setSidebar(!compactLayout.matches && desktopSidebarOpen);
+  if (!compactLayout.matches) {
+    mobileEditing = null; $('finish-editing').hidden = true;
+    document.body.classList.remove('note-editing', 'keyboard-open');
+  }
+  applyView(); updateVisibleHeight();
+});
+window.visualViewport?.addEventListener('resize', updateVisibleHeight);
+window.visualViewport?.addEventListener('scroll', updateVisibleHeight);
 
 renderBoard();
+setSidebar(!compactLayout.matches && desktopSidebarOpen);
+updateVisibleHeight();
 loadCategories();
 if (startupProblem) { setSaveStatus('Saved board unavailable — saving paused', true); toast(startupProblem); }
