@@ -2,6 +2,10 @@
 
 A little room for loose thoughts: a cork board with colorful sticky notes and lined index cards. Put things wherever they make sense, move them around, and let the notes grow with your thoughts.
 
+[Open Cork](https://briday1.github.io/cork/)
+
+![Cork with the sidebar open, colorful notes, and a ruled index card](./docs/cork-board.jpg)
+
 **Plain HTML, CSS, and JavaScript. No backend, accounts, API keys, npm dependencies, or build step required to use it.** GitHub Pages serves the same static files that run locally.
 
 ## Use the board
@@ -15,9 +19,11 @@ A little room for loose thoughts: a cork board with colorful sticky notes and li
 
 Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Surprise me** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
 
-Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key. Drag empty cork to pan. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
+Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
 
 Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for export/import and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
+
+![The full board with its sidebar collapsed](./docs/cork-full-board.jpg)
 
 ### Keyboard shortcuts
 
