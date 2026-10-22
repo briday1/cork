@@ -489,7 +489,8 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
 .yarn-base { stroke: #9e3027; stroke-width: 2.4; }
 .yarn-twist { stroke: #e06e57; stroke-width: .7; stroke-dasharray: 1 2; opacity: .9; }
 .connection-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; outline: none; }
-.yarn.is-selected .yarn-base, .yarn:focus-within .yarn-base { stroke: #cf3d2c; stroke-width: 3.5; }
+.yarn.is-selected .yarn-base, .yarn:focus-within .yarn-base { stroke: #00cfe8; stroke-width: 3.5; }
+.yarn.is-selected .yarn-twist, .yarn:focus-within .yarn-twist { stroke: #bafaff; }
 .connection-pin { pointer-events: none; }
 .note.is-connected .pin { opacity: 0 !important; }
 .viewport.is-connecting, .viewport.is-connecting .note, .viewport.is-connecting .note * { cursor: crosshair !important; }

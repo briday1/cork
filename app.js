@@ -1,4 +1,4 @@
-import {STORAGE_KEY, parseCategoryFile, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
+import {STORAGE_KEY, parseCategoryFile, directoryNameFromFiles, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
 import {prepareImage, putImage, getImage, exportImages, importImages, putFolder, getFolder} from './image-store.js';
 import {connectionGeometry} from './export-core.js';
 
@@ -24,6 +24,7 @@ let saveTimer;
 let toastTimer;
 let pendingImport;
 let pendingImages = [];
+let folderPickTarget = null;
 let pdfExporting = false;
 let stringMode = false, stringStart = null, selectedString = null, stringFrame = 0, stringLayer;
 let savingBlocked = false;
@@ -262,7 +263,10 @@ function renderStrings() {
     group.append(svg('path', {d, class: 'yarn-base'}), svg('path', {d, class: 'yarn-twist'}));
     const hit = svg('path', {d, class: 'connection-hit', tabindex: '0', role: 'button', 'aria-label': 'Connection. Press Delete to remove.'});
     hit.addEventListener('click', event => { event.stopPropagation(); setSelected(null); selectedString = connection.id; renderStrings(); });
-    hit.addEventListener('focus', () => { selectedString = connection.id; group.classList.add('is-selected'); });
+    hit.addEventListener('focus', () => {
+      setSelected(null); selectedString = connection.id;
+      for (const yarn of stringLayer.querySelectorAll('.yarn')) yarn.classList.toggle('is-selected', yarn === group);
+    });
     hit.addEventListener('keydown', event => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); removeString(connection.id); } });
     group.append(hit); stringLayer.append(group);
     connected.add(from.id); connected.add(to.id); pins.set(from.id, curve.from); pins.set(to.id, curve.to);
@@ -511,20 +515,34 @@ function loadFolder(id) {
   return folderHandles.get(id);
 }
 
-async function openFolder(note, label, button) {
-  if (!window.showDirectoryPicker) return toast('System folder dialogs are not supported in this browser.');
+function pickFolderFallback(note = null) {
+  const input = $('folder-file');
+  if (!('webkitdirectory' in input)) return toast('This browser does not provide a folder picker. Try a current desktop browser.');
+  folderPickTarget = note?.id || null;
+  input.value = '';
+  input.click();
+}
+
+function updateFolderLink(note, id, name) {
+  const element = noteElements.get(note.id);
+  if (!element || note.folderId === id && note.title === name) return;
+  record(); note.folderId = id; note.title = name;
+  const label = element.querySelector('.folder-tab'); label.textContent = name; label.title = name;
+  element.setAttribute('aria-label', `${name} folder`);
+  element.querySelector('.folder-open').setAttribute('aria-label', `Open folder ${name} in the system folder dialog`);
+  element.querySelector('.note-drag').setAttribute('aria-label', `Move ${name} folder. Drag or use arrow keys.`);
+  saveNow();
+}
+
+async function openFolder(note) {
+  if (typeof window.showDirectoryPicker !== 'function') return pickFolderFallback(note);
   try {
     const previous = await loadFolder(note.folderId);
     const handle = await window.showDirectoryPicker({id: 'cork-folder', mode: 'read', ...(previous ? {startIn: previous} : {})});
-    if (previous && await handle.isSameEntry(previous)) return;
+    if (previous && await handle.isSameEntry(previous)) return updateFolderLink(note, note.folderId, handle.name);
     const id = crypto.randomUUID();
     await putFolder(id, handle); folderHandles.set(id, Promise.resolve(handle));
-    record(); note.folderId = id; note.title = handle.name;
-    label.textContent = handle.name; label.title = handle.name;
-    button.setAttribute('aria-label', `Open folder ${handle.name} in the system folder dialog`);
-    button.closest('article').setAttribute('aria-label', `${handle.name} folder`);
-    button.closest('article').querySelector('.note-drag').setAttribute('aria-label', `Move ${handle.name} folder. Drag or use arrow keys.`);
-    saveNow();
+    updateFolderLink(note, id, handle.name);
   } catch (error) { if (error.name !== 'AbortError') toast(error.message || 'Could not open the system folder dialog.'); }
 }
 
@@ -535,7 +553,7 @@ function buildFolder(note, index) {
   const open = document.createElement('button'); open.className = 'folder-open'; open.setAttribute('aria-label', `Open folder ${note.title} in the system folder dialog`);
   const label = document.createElement('h2'); label.className = 'folder-tab'; label.textContent = note.title; label.title = note.title;
   const face = document.createElement('span'); face.className = 'folder-face'; face.setAttribute('aria-hidden', 'true');
-  open.append(label, face); open.addEventListener('click', () => { if (Date.now() >= suppressNoteClickUntil && !handMode && !spaceHeld) openFolder(note, label, open); });
+  open.append(label, face); open.addEventListener('click', () => { if (Date.now() >= suppressNoteClickUntil && !handMode && !spaceHeld) openFolder(note); });
   const handle = document.createElement('div'); handle.className = 'note-drag'; handle.tabIndex = 0; handle.setAttribute('role', 'button');
   handle.setAttribute('aria-label', `Move ${note.title} folder. Drag or use arrow keys.`); handle.append(icon('grip'));
   const pin = document.createElement('span'); pin.className = 'pin'; handle.append(pin);
@@ -886,15 +904,30 @@ $('category-search').addEventListener('input', renderCategories);
 $('random-note').addEventListener('click', randomCategory);
 $('add-card').addEventListener('click', () => startPlacement('card'));
 $('add-image').addEventListener('click', () => $('image-file').click());
-$('add-folder').disabled = !window.showDirectoryPicker;
-if (!window.showDirectoryPicker) $('add-folder').title = 'System folder dialogs are not supported in this browser';
+if (typeof window.showDirectoryPicker !== 'function') $('add-folder').title = 'Choose a folder. This browser asks you to select it again when opening a folder tile.';
 $('add-folder').addEventListener('click', async () => {
+  if (typeof window.showDirectoryPicker !== 'function') return pickFolderFallback();
   try {
     const handle = await window.showDirectoryPicker({id: 'cork-folder', mode: 'read'});
     const id = crypto.randomUUID(); await putFolder(id, handle); folderHandles.set(id, Promise.resolve(handle));
     startPlacement('folder', '', id, handle.name);
   } catch (error) { if (error.name !== 'AbortError') toast(error.message || 'Could not select this folder.'); }
 });
+$('folder-file').addEventListener('change', event => {
+  const input = event.target;
+  const name = directoryNameFromFiles(input.files);
+  const target = folderPickTarget; folderPickTarget = null;
+  // Use only the root folder's name; do not read or retain any selected files.
+  input.value = '';
+  if (!name) return toast('Choose one folder containing at least one file.');
+  if (target) {
+    const note = board.notes.find(item => item.id === target && item.type === 'folder');
+    if (note) updateFolderLink(note, note.title === name ? note.folderId : crypto.randomUUID(), name);
+  } else {
+    startPlacement('folder', '', crypto.randomUUID(), name);
+  }
+});
+$('folder-file').addEventListener('cancel', () => { folderPickTarget = null; });
 $('add-string').addEventListener('click', () => {
   const active = !stringMode; cancelPlacement(); handMode = false; spaceHeld = false; updateHandMode(); setStringMode(active);
   if (compactLayout.matches) setSidebar(false);

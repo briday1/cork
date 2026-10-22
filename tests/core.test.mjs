@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCategories, parseCategoryFile, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, revealNote, focusNoteView, continueList, PALETTES} from '../board-core.js';
+import {parseCategories, parseCategoryFile, directoryNameFromFiles, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, revealNote, focusNoteView, continueList, PALETTES} from '../board-core.js';
 
 test('category files accept BOM, CRLF, whitespace, and case-insensitive duplicates', () => {
   assert.deepEqual(parseCategories('\uFEFFIdeas\r\n\r\n Questions  \r\nideas\n#This is a category\n'), ['Ideas', 'Questions', '#This is a category']);
@@ -14,6 +14,14 @@ test('a leading asterisk marks a frequent category without changing its name or 
   });
   assert.deepEqual(parseCategories(text), ['Questions', 'Ideas', 'Inspiration', '#Still a category']);
   assert.deepEqual(parseCategoryFile('Ideas\nQuestions').frequentCategories, []);
+});
+
+test('directory-input fallback gets the root folder name without reading file contents', () => {
+  const files = [{webkitRelativePath: 'Project files/notes.txt'}, {webkitRelativePath: 'Project files/nested/photo.png'}];
+  assert.equal(directoryNameFromFiles(files), 'Project files');
+  assert.equal(directoryNameFromFiles([]), null);
+  assert.equal(directoryNameFromFiles([{webkitRelativePath: ''}]), null);
+  assert.equal(directoryNameFromFiles([...files, {webkitRelativePath: 'Other folder/file.txt'}]), null);
 });
 
 test('100 categories get 100 distinct HSV colors, without repeating the endpoint', () => {

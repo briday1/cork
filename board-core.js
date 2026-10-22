@@ -28,6 +28,17 @@ export function parseCategoryFile(text) {
   return {categories, frequentCategories: categories.filter(name => frequent.has(name.toLocaleLowerCase()))};
 }
 
+export function directoryNameFromFiles(files) {
+  let name = null;
+  for (const file of files || []) {
+    const parts = (file.webkitRelativePath || '').split('/');
+    if (parts.length < 2 || !parts[0] || parts[0] === '.' || parts[0] === '..') return null;
+    if (name !== null && parts[0] !== name) return null;
+    name = parts[0];
+  }
+  return name;
+}
+
 export function categoryColor(name, categories, palette = 'hsv') {
   if (!Object.hasOwn(PALETTES, palette)) palette = 'hsv';
   const index = categories.indexOf(name);
