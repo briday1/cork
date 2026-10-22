@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f4ed">
+  <meta name="description" content="A little room for loose thoughts. Pin colorful notes and index cards anywhere on your own cork board.">
+  <title>Cork — room for your thoughts</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-random" viewBox="0 0 24 24"><path d="M3 6h3c5 0 7 12 12 12h3M17 14l4 4-4 4M3 18h3c2 0 3-2 4-4M14 10c1-2 2-4 4-4h3M17 2l4 4-4 4"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 13h10M7 16h7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="m9 4-5 5 5 5M4 9h9a6 6 0 0 1 0 12"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 4 5 5-5 5M20 9h-9a6 6 0 0 0 0 12"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M9 3H3v6M15 3h6v6M3 15v6h6M21 15v6h-6M8 8h8v8H8z"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4M12 17h.01"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><path d="M7 6h.01M12 6h.01M17 6h.01M7 12h.01M12 12h.01M17 12h.01"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 12V5a2 2 0 0 1 4 0v6-8a2 2 0 0 1 4 0v8-5a2 2 0 0 1 4 0v9c0 5-3 7-7 7-3 0-5-2-7-5l-3-4a2 2 0 0 1 3-3l2 2Z"/></symbol>
+  </svg>
+
+  <aside class="sidebar" id="sidebar" aria-label="Note supplies">
+    <a class="brand" href="./" aria-label="Cork home"><span class="brand-mark" aria-hidden="true"><span></span></span><span>cork<span class="brand-period">.</span></span></a>
+    <p class="tagline">A little room for loose thoughts.</p>
+    <div class="supplies-heading"><h2>YOUR CATEGORIES</h2><span id="category-total" class="tiny-count">0</span></div>
+    <label class="search-box"><svg><use href="#i-search"/></svg><input id="category-search" type="search" placeholder="Find a category…" aria-label="Search categories" autocomplete="off"><kbd>/</kbd></label>
+    <div id="category-list" class="category-list" aria-label="Categories"></div>
+    <p id="category-message" class="category-message" hidden></p>
+    <button id="retry-categories" class="text-button" hidden>Retry loading categories</button>
+    <div class="sidebar-bottom">
+      <button id="random-note" class="random-button"><svg><use href="#i-random"/></svg>Surprise me<span class="key-hint">R</span></button>
+      <button id="add-card" class="index-button"><svg><use href="#i-card"/></svg><span>Index card<small>A little more room to think</small></span><svg class="plus"><use href="#i-plus"/></svg></button>
+      <div class="palette-control"><label for="theme">Board appearance</label><select id="theme"><option value="natural">Natural cork</option><option value="pale">Pale cork</option><option value="dark">Dark cork</option></select><label for="palette">Category colors</label><select id="palette"><option value="hsv">HSV · soft paper</option><option value="spectrum">Pastel spectrum</option><option value="viridis">Viridis · soft paper</option><option value="cividis">Cividis · soft paper</option><option value="warm">Warm tones</option><option value="cool">Cool tones</option><option value="earth">Earth tones</option></select><div id="palette-preview" class="palette-preview" aria-hidden="true"></div></div>
+      <button id="show-help" class="help-button"><svg><use href="#i-help"/></svg>A few useful things<span>?</span></button>
+    </div>
+  </aside>
+
+  <main class="workspace">
+    <header class="topbar">
+      <button id="toggle-sidebar" class="icon-button mobile-menu" aria-label="Show note supplies" aria-expanded="false"><svg><use href="#i-plus"/></svg></button>
+      <div class="board-heading"><input id="board-name" aria-label="Board name" value="My board" maxlength="80"><span id="save-status" class="save-status" role="status">Saved in this browser</span></div>
+      <div class="topbar-actions"><span id="note-count" class="note-count">0 notes</span><span class="toolbar-divider"></span><button id="undo" class="icon-button" aria-label="Undo board change" title="Undo (Ctrl/Cmd+Z)" disabled><svg><use href="#i-undo"/></svg></button><button id="redo" class="icon-button" aria-label="Redo board change" title="Redo (Ctrl/Cmd+Shift+Z)" disabled><svg><use href="#i-redo"/></svg></button><div class="menu-wrap"><button id="board-menu-button" class="icon-button" aria-label="Board options" aria-expanded="false"><svg><use href="#i-more"/></svg></button><div id="board-menu" class="board-menu" hidden><button id="export-board"><svg><use href="#i-download"/></svg>Export board</button><button id="import-board"><svg><use href="#i-upload"/></svg>Import board…</button><div class="menu-rule"></div><button id="reset-view"><svg><use href="#i-fit"/></svg>Reset view</button><a href="https://github.com/briday1/cork#readme" target="_blank" rel="noopener noreferrer"><svg><use href="#i-help"/></svg>Read the guide<span>↗</span></a></div></div></div>
+    </header>
+
+    <section id="viewport" class="viewport" aria-label="Cork board. Pick a category, then click anywhere to place a note." tabindex="0">
+      <svg class="cork-texture" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><filter id="cork-grain"><feTurbulence type="fractalNoise" baseFrequency=".63" numOctaves="3" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="linear" slope=".38"/></feComponentTransfer><feBlend in="SourceGraphic" mode="multiply"/></filter><rect width="100%" height="100%" filter="url(#cork-grain)" opacity=".65"/></svg>
+      <div id="board-world" class="board-world"></div>
+      <div id="empty-state" class="empty-state"><div class="empty-illustration" aria-hidden="true"><span class="empty-card back"></span><span class="empty-card front"><i></i><i></i><i></i></span><span class="little-pin"></span></div><h1>Let a thought land.</h1><p>Choose a category. Find a spot.<br>See where it takes you.</p><button id="empty-start" class="empty-start">Pick a random category <span>↗</span></button></div>
+      <div id="placement-preview" class="placement-preview" aria-hidden="true" hidden><span class="pin"></span><strong id="preview-title"></strong><p id="preview-hint">Click to pin it here</p></div>
+      <div id="placement-bar" class="placement-bar" hidden><span id="placement-label"></span><button id="cancel-placement" aria-label="Cancel placing note"><svg><use href="#i-close"/></svg><span>Esc</span></button></div>
+      <div class="board-footer"><span id="board-tip" class="board-tip">Drag the board to wander. Drag a note by its top edge.</span><div class="view-controls"><button id="pan-mode" class="icon-button" aria-label="Hand tool" aria-pressed="false" title="Hand tool (hold Space)"><svg><use href="#i-hand"/></svg></button><span></span><button id="zoom-out" class="icon-button" aria-label="Zoom out">−</button><button id="zoom-reset" class="zoom-level" aria-label="Reset zoom to 100%">100%</button><button id="zoom-in" class="icon-button" aria-label="Zoom in">+</button><span></span><button id="fit-view" class="icon-button" aria-label="Fit all notes" title="Fit all notes"><svg><use href="#i-fit"/></svg></button></div></div>
+    </section>
+  </main>
+  <button id="sidebar-scrim" class="sidebar-scrim" aria-label="Close note supplies" hidden></button>
+  <input id="import-file" type="file" accept="application/json,.json" hidden>
+  <div id="toast" class="toast" role="status" hidden><span id="toast-message"></span><button id="toast-undo" hidden>Undo</button></div>
+
+  <dialog id="help-dialog" class="help-dialog"><button id="close-help" class="icon-button close-dialog" aria-label="Close guide"><svg><use href="#i-close"/></svg></button><span class="dialog-eyebrow">MAKE YOURSELF AT HOME</span><h2>Thoughts don’t have to line up.</h2><p>Choose a category from the sidebar, then click a spot on the board. Your note is ready to write in.</p><div class="help-grid"><div><strong>Put it anywhere</strong><p>Move notes using their top edge. Drag empty cork to move around; use the zoom controls to step back.</p></div><div><strong>Make a little room</strong><p>Notes grow as you type. Use the list button for bullets; Enter continues a list and an empty bullet ends it.</p></div><div><strong>Follow a surprise</strong><p>“Surprise me” picks from all categories. Press <kbd>R</kbd> for a random note, <kbd>I</kbd> for an index card, or <kbd>Esc</kbd> to cancel.</p></div><div><strong>Keep your thoughts</strong><p>Your board saves in this browser on this device. Use Export board in the top menu for a backup, or Import board to bring one back.</p></div></div><p class="help-footnote">Categories come from <a href="https://github.com/briday1/cork/blob/main/categories.txt" target="_blank" rel="noopener noreferrer">categories.txt in the repository ↗</a>. Edit one category per line and publish; refresh the board to see the changes. Your existing notes stay put.</p><button id="help-done" class="primary-button">Find a spot</button></dialog>
+
+  <dialog id="import-dialog" class="help-dialog import-dialog"><h2>Bring this board in?</h2><p id="import-summary"></p><p>Your current board will be replaced. Export it first if you want to keep both. You can also undo an import.</p><div class="dialog-actions"><button id="cancel-import" class="secondary-button">Keep current board</button><button id="confirm-import" class="primary-button">Import board</button></div></dialog>
+</body>
+</html>
