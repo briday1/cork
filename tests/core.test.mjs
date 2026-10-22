@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseCategories, parseCategoryFile, directoryNameFromFiles, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, revealNote, focusNoteView, continueList, PALETTES} from '../board-core.js';
+import {parseCategories, parseCategoryFile, missingBoardCategories, directoryNameFromFiles, categoryColor, blankBoard, validateBoard, screenToWorld, zoomAt, revealNote, focusNoteView, continueList, PALETTES} from '../board-core.js';
 
 test('category files accept BOM, CRLF, whitespace, and case-insensitive duplicates', () => {
   assert.deepEqual(parseCategories('\uFEFFIdeas\r\n\r\n Questions  \r\nideas\n#This is a category\n'), ['Ideas', 'Questions', '#This is a category']);
@@ -22,6 +22,20 @@ test('directory-input fallback gets the root folder name without reading file co
   assert.equal(directoryNameFromFiles([]), null);
   assert.equal(directoryNameFromFiles([{webkitRelativePath: ''}]), null);
   assert.equal(directoryNameFromFiles([...files, {webkitRelativePath: 'Other folder/file.txt'}]), null);
+});
+
+test('undefined board categories remain usable and compare without case or surrounding spaces', () => {
+  const notes = [
+    {type: 'note', category: 'ideas'}, {type: 'note', category: ' Older category '},
+    {type: 'note', category: 'OLDER CATEGORY'}, {type: 'note', category: 'Another'},
+    {type: 'card', category: 'Card title'}, {type: 'image', category: 'Photo'},
+    {type: 'folder', category: 'Folder'}, {type: 'note', category: '  '},
+  ];
+  const original = structuredClone(notes);
+  assert.deepEqual(missingBoardCategories(notes, ['Ideas']), ['Older category', 'Another']);
+  assert.deepEqual(missingBoardCategories(notes, ['Ideas', 'Older category', 'Another']), []);
+  assert.deepEqual(missingBoardCategories(notes, []), ['ideas', 'Older category', 'Another']);
+  assert.deepEqual(notes, original, 'finding undefined categories never rewrites notes');
 });
 
 test('100 categories get 100 distinct HSV colors, without repeating the endpoint', () => {

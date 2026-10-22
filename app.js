@@ -1,6 +1,7 @@
-import {STORAGE_KEY, parseCategoryFile, directoryNameFromFiles, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
+import {STORAGE_KEY, parseCategoryFile, missingBoardCategories, directoryNameFromFiles, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
 import {prepareImage, putImage, getImage, exportImages, importImages, putFolder, getFolder} from './image-store.js';
 import {connectionGeometry} from './export-core.js';
+import {readCategoryFile, readCategoryCache, writeCategoryCache, readLinkedCategories, getCategoryHandle, putCategoryHandle} from './category-file.js';
 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
@@ -10,9 +11,12 @@ const corkTiles = new Map();
 // The photograph is 2048 × 1536: two image pixels per board unit at 100%.
 const corkTileSize = {width: 1024, height: 768};
 const storageKey = `${STORAGE_KEY}:${location.pathname.replace(/index\.html$/, '')}`;
+const categoriesKey = `${storageKey}:categories`;
 let board = blankBoard();
 let categories = [];
 let frequentCategories = new Set();
+let categoryFile = null, categoryHandle = null, categoryText = '', categoryStatus = '';
+let categoryRevision = 0, categoryBusy = false, categoriesReady = false, lastCategoryCheck = 0;
 let selected = null;
 let placement = null;
 let pointer = null;
@@ -119,26 +123,148 @@ function toast(message, withUndo = false) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 6000);
 }
 
-function colorFor(category) { return categoryColor(category, categories, board.palette); }
+function colorFor(category) {
+  const name = categories.find(name => name.toLocaleLowerCase() === category.trim().toLocaleLowerCase()) || category;
+  return categoryColor(name, categories, board.palette);
+}
 
-async function loadCategories() {
+function applyCategoryText(text) {
+  categoryText = text;
+  const parsed = parseCategoryFile(text);
+  categories = parsed.categories;
+  frequentCategories = new Set(parsed.frequentCategories);
+  categoriesReady = true;
   categoryLoadFailed = false;
-  $('retry-categories').hidden = true;
+  renderCategories();
+  updateNoteColors();
+}
+
+function renderCategorySource() {
+  $('category-source-name').textContent = categoryFile?.name || 'Default categories';
+  $('category-source-status').textContent = categoryStatus || (categoryFile ? 'Saved in this browser. Use Refresh after editing the file.' : 'Load your own .txt file to use instead.');
+  $('category-source').classList.toggle('is-local', Boolean(categoryFile));
+  $('refresh-categories').hidden = !categoryFile;
+  $('default-categories').hidden = !categoryFile;
+  $('refresh-categories').textContent = categoryHandle ? 'Refresh' : 'Reload file…';
+  $('download-categories').disabled = !categoriesReady || categoryLoadFailed;
+  for (const id of ['load-categories', 'refresh-categories', 'default-categories']) $(id).disabled = categoryBusy;
+}
+
+function cacheCategories() {
+  try { writeCategoryCache(localStorage, categoriesKey, categoryFile); return true; }
+  catch {
+    categoryStatus = 'Loaded for this tab. Browser storage could not remember the list; keep your text file.';
+    return false;
+  }
+}
+
+async function loadDefaultCategories() {
+  const revision = ++categoryRevision;
+  categoryStatus = 'Loading default categories…';
+  renderCategorySource();
   try {
     const response = await fetch(new URL('./categories.txt', import.meta.url), {cache: 'no-store'});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const parsed = parseCategoryFile(await response.text());
-    categories = parsed.categories;
-    frequentCategories = new Set(parsed.frequentCategories);
+    const text = await response.text();
+    if (revision !== categoryRevision) return;
+    categoryStatus = '';
+    applyCategoryText(text);
   } catch (error) {
+    if (revision !== categoryRevision) return;
     categoryLoadFailed = true;
+    categoriesReady = true;
     categories = [];
     frequentCategories.clear();
+    categoryStatus = 'Couldn’t load the default list. Load a local file or retry below.';
+    renderCategories(); updateNoteColors();
     console.warn('Cork could not load categories.txt:', error.message);
   }
-  renderCategories();
-  renderPalette();
-  updateNoteColors();
+  renderCategorySource();
+}
+
+async function loadCategories() {
+  const revision = ++categoryRevision;
+  categoryFile = null; categoryHandle = null; categoryBusy = false;
+  try {
+    categoryFile = readCategoryCache(localStorage, categoriesKey);
+  } catch { /* Defaults remain available if browser storage cannot be read. */ }
+  if (!categoryFile) return loadDefaultCategories();
+  categoryStatus = 'Using the saved list. Checking the linked file…';
+  applyCategoryText(categoryFile.text); renderCategorySource();
+  try {
+    const saved = await getCategoryHandle(categoriesKey);
+    if (revision !== categoryRevision) return;
+    // A token prevents a previous file's handle being attached to a newer list
+    // if the browser could save the text but could not replace the old handle.
+    if (saved?.token === categoryFile.token && typeof window.showOpenFilePicker === 'function') categoryHandle = saved.handle;
+  } catch { /* The cached list also works without IndexedDB. */ }
+  if (revision !== categoryRevision) return;
+  if (categoryHandle) return refreshCategories(false);
+  categoryStatus = 'Saved in this browser. After editing the file, use Reload file to select it again.';
+  renderCategorySource();
+}
+
+async function chooseCategories() {
+  if (typeof window.showOpenFilePicker !== 'function') return $('categories-file').click();
+  const revision = ++categoryRevision;
+  categoryBusy = true; renderCategorySource();
+  try {
+    const [handle] = await window.showOpenFilePicker({id: 'cork-categories', multiple: false, types: [{description: 'Categories text file', accept: {'text/plain': ['.txt']}}], ...(categoryHandle ? {startIn: categoryHandle} : {})});
+    const file = await handle.getFile();
+    await useCategoryFile(file, handle, revision);
+  } catch (error) {
+    if (revision === categoryRevision && error.name !== 'AbortError') toast(error.message || 'Could not open the categories file.');
+  } finally {
+    if (revision === categoryRevision) {
+      categoryBusy = false; renderCategorySource();
+      if (!categoriesReady) loadCategories();
+    }
+  }
+}
+
+async function useCategoryFile(file, handle = null, revision = ++categoryRevision) {
+  const data = await readCategoryFile(file);
+  if (revision !== categoryRevision) return;
+  categoryFile = {version: 1, ...data, token: crypto.randomUUID()};
+  categoryHandle = handle;
+  categoryStatus = handle ? 'Linked to this file. Changes are checked when you return to the tab.' : 'Saved in this browser. After editing the file, use Reload file to select it again.';
+  applyCategoryText(data.text);
+  const remembered = cacheCategories();
+  renderCategorySource();
+  try {
+    await putCategoryHandle(categoriesKey, handle ? {token: categoryFile.token, handle} : null);
+  } catch {
+    if (revision !== categoryRevision) return;
+    if (remembered) categoryStatus = 'List saved in this browser. The file link could not be remembered; select it again after editing.';
+    renderCategorySource();
+  }
+}
+
+async function refreshCategories(askPermission = true) {
+  if (!categoryFile || categoryBusy) return;
+  if (!categoryHandle) { if (askPermission) return chooseCategories(); return; }
+  const revision = ++categoryRevision;
+  categoryBusy = true; lastCategoryCheck = Date.now(); renderCategorySource();
+  try {
+    const data = await readLinkedCategories(categoryHandle, askPermission);
+    if (revision !== categoryRevision) return;
+    if (data) {
+      categoryFile = {...categoryFile, ...data};
+      categoryStatus = 'Linked to this file. Changes are checked when you return to the tab.';
+      applyCategoryText(data.text); cacheCategories();
+    } else {
+      categoryStatus = 'Using the saved list. Click Refresh to allow access to the linked file again.';
+    }
+  } catch {
+    if (revision !== categoryRevision) return;
+    categoryStatus = 'Using the saved list. The linked file couldn’t be read; use Load file to reconnect it.';
+  } finally {
+    if (revision === categoryRevision) { categoryBusy = false; renderCategorySource(); }
+  }
+}
+
+function checkCategoryFile() {
+  if (document.visibilityState !== 'hidden' && categoryHandle && !categoryBusy && Date.now() - lastCategoryCheck > 1500) refreshCategories(false);
 }
 
 function renderCategories() {
@@ -146,12 +272,18 @@ function renderCategories() {
   list.replaceChildren();
   const query = $('category-search').value.trim().toLocaleLowerCase();
   const shown = categories.filter(category => category.toLocaleLowerCase().includes(query));
+  const missing = categoriesReady ? missingBoardCategories(board.notes, categories) : [];
+  const shownMissing = missing.filter(category => category.toLocaleLowerCase().includes(query));
   const counts = new Map();
-  for (const note of board.notes) if (note.type === 'note') counts.set(note.category, (counts.get(note.category) || 0) + 1);
+  for (const note of board.notes) if (note.type === 'note') {
+    const key = note.category.trim().toLocaleLowerCase();
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
   const groups = frequentCategories.size ? [
     ['Frequently used', shown.filter(category => frequentCategories.has(category))],
     ['Other categories', shown.filter(category => !frequentCategories.has(category))],
   ] : [[null, shown]];
+  if (shownMissing.length) groups.push(['Also on this board', shownMissing]);
   for (const [heading, names] of groups) {
     if (!names.length) continue;
     if (heading) {
@@ -165,20 +297,24 @@ function renderCategories() {
     button.style.setProperty('--note-color', colorFor(category));
     button.setAttribute('aria-pressed', String(placement?.type === 'note' && placement.category === category));
     button.setAttribute('aria-label', `Place a ${category} note`);
+    if (heading === 'Also on this board') button.title = 'Used on this board; not listed in the categories file. You can still use it.';
     const chip = document.createElement('span'); chip.className = 'color-chip'; chip.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span'); label.className = 'category-label'; label.textContent = category;
-    const count = document.createElement('span'); count.className = 'category-count'; count.textContent = counts.get(category) || '';
+    const count = document.createElement('span'); count.className = 'category-count'; count.textContent = counts.get(category.trim().toLocaleLowerCase()) || '';
     button.append(chip, label, count);
     button.addEventListener('click', () => startPlacement('note', category));
     list.append(button);
     }
   }
-  $('category-total').textContent = categories.length;
-  $('random-note').disabled = !categories.length;
-  $('category-message').hidden = Boolean(categories.length);
-  $('category-message').textContent = categoryLoadFailed ? 'Couldn’t load categories.txt. You can still use index cards.' : 'Add one category per line in categories.txt to get started. Index cards are ready to use.';
+  $('category-total').textContent = categories.length + missing.length;
+  $('random-note').disabled = !categories.length && !missing.length;
+  $('category-message').hidden = Boolean(categories.length || missing.length) || !categoriesReady;
+  $('category-message').textContent = categoryLoadFailed ? 'Couldn’t load the categories file. Load a local file or retry.' : 'The categories file is empty. Add one category per line, then reload it. Index cards are ready to use.';
+  $('category-missing').hidden = !missing.length || categoryLoadFailed;
+  const missingMessage = missing.length === 1 ? '1 board category isn’t in this file. It still works and is listed below.' : `${missing.length} board categories aren’t in this file. They still work and are listed below.`;
+  if ($('category-missing').textContent !== missingMessage) $('category-missing').textContent = missingMessage;
   $('retry-categories').hidden = !categoryLoadFailed;
-  if (categories.length && !shown.length) {
+  if ((categories.length || missing.length) && !shown.length && !shownMissing.length) {
     const empty = document.createElement('p'); empty.className = 'no-results'; empty.textContent = 'No matching categories.'; list.append(empty);
   }
 }
@@ -657,9 +793,10 @@ function renderBoard() {
 }
 
 function randomCategory() {
-  if (!categories.length) return;
-  let options = categories;
-  if (categories.length > 1 && placement?.type === 'note') options = categories.filter(c => c !== placement.category);
+  const available = [...categories, ...missingBoardCategories(board.notes, categories)];
+  if (!available.length) return;
+  let options = available;
+  if (available.length > 1 && placement?.type === 'note') options = available.filter(c => c !== placement.category);
   const random = new Uint32Array(1); crypto.getRandomValues(random);
   startPlacement('note', options[Math.floor((random[0] / 4294967296) * options.length)]);
 }
@@ -901,6 +1038,33 @@ viewport.addEventListener('wheel', event => {
 }, {passive: false});
 
 $('category-search').addEventListener('input', renderCategories);
+$('load-categories').addEventListener('click', chooseCategories);
+$('refresh-categories').addEventListener('click', () => refreshCategories());
+$('categories-file').addEventListener('change', async event => {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file) return;
+  categoryBusy = true; renderCategorySource();
+  try { await useCategoryFile(file); }
+  catch (error) { toast(error.message || 'Could not open the categories file.'); }
+  finally {
+    categoryBusy = false; renderCategorySource();
+    if (!categoriesReady) loadCategories();
+  }
+});
+$('default-categories').addEventListener('click', () => {
+  categoryFile = null; categoryHandle = null; categoryText = '';
+  try { writeCategoryCache(localStorage, categoriesKey, null); }
+  catch { toast('Default categories will be used for this tab. Browser storage could not remember the change.'); }
+  putCategoryHandle(categoriesKey, null).catch(() => {});
+  loadDefaultCategories();
+});
+$('download-categories').addEventListener('click', () => {
+  const url = URL.createObjectURL(new Blob([categoryText], {type: 'text/plain;charset=utf-8'}));
+  const link = document.createElement('a');
+  link.href = url; link.download = categoryFile?.name || 'categories.txt';
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+});
 $('random-note').addEventListener('click', randomCategory);
 $('add-card').addEventListener('click', () => startPlacement('card'));
 $('add-image').addEventListener('click', () => $('image-file').click());
@@ -946,7 +1110,7 @@ $('image-file').addEventListener('change', async event => {
   finally { $('add-image').disabled = false; }
 });
 $('cancel-placement').addEventListener('click', cancelPlacement);
-$('retry-categories').addEventListener('click', loadCategories);
+$('retry-categories').addEventListener('click', loadDefaultCategories);
 $('palette').addEventListener('change', () => { record(); board.palette = $('palette').value; renderCategories(); renderPalette(); updateNoteColors(); saveNow(); });
 $('theme').addEventListener('change', () => { record(); board.theme = $('theme').value; renderPalette(); saveNow(); });
 $('board-name').addEventListener('focus', record);
@@ -1076,8 +1240,10 @@ window.addEventListener('blur', () => {
   gesture = null; activePointers.clear(); viewport.classList.remove('is-panning');
 });
 window.addEventListener('pagehide', saveNow);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); else checkCategoryFile(); });
+window.addEventListener('focus', checkCategoryFile);
 window.addEventListener('storage', event => {
+  if (event.key === categoriesKey) { loadCategories(); return; }
   if (event.key !== storageKey || !event.newValue) return;
   clearTimeout(saveTimer); savingBlocked = true;
   setSaveStatus('Changed in another tab — saving paused', true);

@@ -51,9 +51,11 @@ Shortcuts do not fire while you type in a text field.
 | `Ctrl/Cmd+Z` | Undo a board change when not editing text |
 | `Ctrl/Cmd+Shift+Z` or `Ctrl/Cmd+Y` | Redo a board change |
 
-## Edit the categories
+## Use your own categories
 
-Edit **[`categories.txt`](./categories.txt)** in the repository root. Each nonempty line is a category:
+The repository’s **[`categories.txt`](./categories.txt)** is a default list. You do not need to edit or fork the repository to use your own categories, and you keep receiving app updates.
+
+Open **Default categories** (or your current filename) above the sidebar search. Choose **Save a copy** to download a starting list, edit it with a text editor, and choose **Load file…** to select your local `.txt` file. Each nonempty line is a category:
 
 ```text
 * Ideas
@@ -65,11 +67,13 @@ Something completely different
 
 Prefix a line with `*` (with or without a space) to put that category in **Frequently used** at the top of the list. The marker is hidden from labels and notes. Other categories appear below. Searching filters both groups, and Random category still uses the entire list. Marking a category does not change its color or position in the underlying category order.
 
-Commit the file to `main`. Once the Pages workflow finishes, refresh the app. It fetches `categories.txt` directly using a relative URL, so it also works under GitHub Pages project paths and other static hosting paths.
+The browser remembers a copy of your loaded list across visits. Where the browser supports linking local files, Cork also remembers the file handle and checks for edits on startup and when you return to the tab. If file permission expires, the saved list keeps working; **Refresh** lets you allow access again. In other browsers, **Reload file…** asks you to select the edited file again. You do not need to reload an unchanged list on every visit. **Use default** switches back to the repository list without changing your notes. Your local file is only read, never overwritten or uploaded. Clearing this site’s browser data removes the saved copy and file link.
 
-Leading/trailing spaces and empty lines are ignored. Duplicate names are removed without regard to case. `#` is ordinary category text, not a comment marker. Existing notes keep their category names and content even when you remove or rename a category in the file. Removing a category does **not** delete its notes.
+Keep two files for a portable setup: your **categories `.txt`** (usually changed rarely) and your **board `.json`** from Export board. The board contains the notes and original images; the categories file is separate. When moving to another browser or device, import the board and load your categories once. A selected categories file is limited to 1 MB.
 
-No category count is hard-coded. The default file is just a set of starter categories; replace it with your own list.
+Leading/trailing spaces and empty lines are ignored. Duplicate names are removed without regard to case. `#` is ordinary category text, not a comment marker. Existing notes keep their category names and content even when you remove or rename a category in the file. A small sidebar notice flags categories used on the board but absent from the file. They appear under **Also on this board** and still work for new notes, searching, Random category, saving, and export. Names are compared without regard to case; cards, photos, and folders do not count as missing categories. Removing a category does **not** delete its notes.
+
+No category count is hard-coded. Maintainers can still edit the repository list to change the default for people who have not loaded a local list; it is fetched without caching. App updates and changes to that default never replace someone’s loaded local list.
 
 ## Appearance and color maps
 

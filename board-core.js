@@ -28,6 +28,17 @@ export function parseCategoryFile(text) {
   return {categories, frequentCategories: categories.filter(name => frequent.has(name.toLocaleLowerCase()))};
 }
 
+export function missingBoardCategories(notes, categories) {
+  const defined = new Set(categories.map(name => name.trim().toLocaleLowerCase()));
+  const missing = new Map();
+  for (const note of notes) {
+    if (note.type !== 'note') continue;
+    const name = note.category.trim(), key = name.toLocaleLowerCase();
+    if (name && !defined.has(key) && !missing.has(key)) missing.set(key, name);
+  }
+  return [...missing.values()];
+}
+
 export function directoryNameFromFiles(files) {
   let name = null;
   for (const file of files || []) {
