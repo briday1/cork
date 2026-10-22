@@ -64,6 +64,16 @@ test('exports round trip text, arbitrary positions, width, appearance, and remov
   assert.deepEqual(validateBoard(JSON.parse(JSON.stringify(input))), input);
 });
 
+test('manual note height survives saving and import, with safe size limits', () => {
+  const input = sample();
+  input.notes[0].height = 340;
+  assert.deepEqual(validateBoard(JSON.parse(JSON.stringify(input))), input);
+  input.notes[0].height = 1;
+  assert.equal(validateBoard(input).notes[0].height, 120);
+  input.notes[0].height = 1e6;
+  assert.equal(validateBoard(input).notes[0].height, 2000);
+});
+
 test('bad imports are rejected without silently dropping notes', () => {
   assert.throws(() => validateBoard({version: 9, notes: []}));
   assert.throws(() => validateBoard({...sample(), notes: [...sample().notes, ...sample().notes]}));

@@ -424,3 +424,14 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
     --grabbing: image-set(url("./assets/grabbing.svg") 1x, url("./assets/grabbing@2x.png") 2x, url("./assets/grabbing@3x.png") 3x) 16 16, grabbing;
   }
 }
+
+/* Size the paper freely while keeping all written content visible. */
+.note.has-custom-height .note-content { min-height: 0; }
+.note-resize { cursor: nwse-resize; }
+.note-resize-height { position: absolute; bottom: 0; left: calc(50% - 20px); width: 40px; height: 14px; padding: 0; color: #59624b; cursor: ns-resize; touch-action: none; opacity: 0; z-index: 3; }
+.note-resize-height:after { content: ""; position: absolute; left: 10px; top: 7px; width: 20px; height: 2px; border-radius: 2px; background: currentColor; }
+.note:hover .note-resize-height, .note:focus-within .note-resize-height, .note.is-selected .note-resize-height { opacity: .35; }
+@media (pointer: coarse) {
+  .note-resize-height { left: 10px; width: 44px; height: 44px; opacity: .35; }
+  .note-resize-height:after { left: 12px; top: 33px; }
+}

@@ -11,7 +11,7 @@ A little room for loose thoughts: a cork board with colorful sticky notes and li
 3. Type in the note. It grows vertically as you write, and longer lines can widen it. The text is plain text; the list button adds bullets and Enter continues bulleted or numbered lists. Press Enter on an empty bullet to finish the list.
 4. Grab a note by its **top edge** to move it anywhere. You can also focus that edge with Tab and move it with the arrow keys; hold Shift for one-pixel adjustments.
 
-**Index card** places a larger, lined card with its own editable title and no category. Both notes and index cards expand with their content. Drag the little bottom-right corner to choose a width; double-click that corner to restore automatic width. With the corner focused, the left and right arrow keys adjust width.
+**Index card** places a larger, lined card with its own editable title and no category. Both notes and index cards expand with their content. Drag the bottom grip up or down to make a note or card shorter or taller. Drag the bottom-right corner to resize width and height together. Written content always stays visible. Double-click the bottom grip to restore automatic height, or the corner to restore automatic sizing. With a grip focused, use the arrow keys to resize; hold Shift for one-pixel adjustments.
 
 Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Surprise me** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
 
@@ -73,7 +73,7 @@ Colors are sampled across the category count in file order. HSV excludes the dup
 
 ## Saving and backups
 
-The board automatically saves to **localStorage in your current browser on this device**, including notes, positions, widths, theme, color map, board name, and view. The save indicator reports browser-storage failures rather than claiming the board was saved.
+The board automatically saves to **localStorage in your current browser on this device**, including notes, positions, widths, heights, theme, color map, board name, and view. The save indicator reports browser-storage failures rather than claiming the board was saved.
 
 - Notes are **not** written back into the repository and are **not** shared with other visitors or other devices.
 - Clearing site data, private-browsing cleanup, or moving to another browser/origin can remove or separate the saved board.

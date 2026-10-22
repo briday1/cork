@@ -89,7 +89,7 @@ export function validateBoard(data) {
   const notes = data.notes.map(n => {
     if (!n || typeof n.id !== 'string' || !n.id || n.id.length > 100 || ids.has(n.id) || !['note', 'card'].includes(n.type) || !finite(n.x) || !finite(n.y) || typeof n.text !== 'string' || n.text.length > 100000 || typeof n.category !== 'string' || n.category.length > 10000 || typeof n.title !== 'string' || n.title.length > 10000) throw new Error('This board contains an invalid note. Nothing was changed.');
     ids.add(n.id);
-    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {})};
+    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {}), ...(finite(n.height) ? {height: Math.max(120, Math.min(2000, n.height))} : {})};
   });
   const view = data.view;
   return {

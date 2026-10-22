@@ -248,9 +248,21 @@ function autosize(note, element) {
   const longest = Math.max(0, ...`${note.type === 'card' ? note.title : note.category}\n${note.text}`.split('\n').map(line => line.length));
   const width = note.width || Math.min(maxAutoWidth, Math.max(baseWidth, 42 + longest * 6.1));
   element.style.width = `${width}px`;
+  element.classList.toggle('has-custom-height', Boolean(note.height));
+  element.style.minHeight = note.height ? `${note.height}px` : '';
   for (const area of element.querySelectorAll('textarea')) {
     area.style.height = '0px';
-    area.style.height = `${Math.max(area.classList.contains('note-content') ? 92 : 22, area.scrollHeight)}px`;
+    const isContent = area.classList.contains('note-content');
+    const style = getComputedStyle(area);
+    const oneLine = parseFloat(style.lineHeight) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const minimum = isContent ? (note.height ? oneLine : 92) : 22;
+    area.style.height = `${Math.max(minimum, area.scrollHeight)}px`;
+  }
+  if (note.height) {
+    const content = element.querySelector('.note-content');
+    const bottom = parseFloat(getComputedStyle(element).paddingBottom);
+    const available = element.clientHeight - content.offsetTop - bottom;
+    content.style.height = `${Math.max(parseFloat(content.style.height), available)}px`;
   }
   if (note.type === 'card') {
     // Start the ruling below the header even when the title wraps or grows.
@@ -387,12 +399,28 @@ function buildNote(note, index) {
     actionButton('Delete note', 'trash', () => removeNote(note.id)),
   );
   const resize = document.createElement('button'); resize.className = 'note-resize';
-  resize.setAttribute('aria-label', 'Resize note width. Drag or use left and right arrow keys.');
-  resize.title = 'Drag to change width; double-click for automatic sizing';
-  resize.addEventListener('dblclick', () => { record(); delete note.width; autosize(note, element); saveSoon(); });
+  resize.setAttribute('aria-label', 'Resize note width and height. Drag or use arrow keys.');
+  resize.title = 'Drag to change width and height; double-click for automatic sizing';
+  resize.addEventListener('dblclick', () => { record(); delete note.width; delete note.height; autosize(note, element); saveSoon(); });
   resize.addEventListener('keydown', event => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    event.preventDefault(); record(); note.width = Math.max(190, Math.min(800, element.offsetWidth + (event.key === 'ArrowRight' ? 10 : -10))); autosize(note, element); saveSoon();
+    const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[event.key];
+    if (!direction) return;
+    event.preventDefault(); record();
+    const step = event.shiftKey ? 1 : 10;
+    if (direction[0]) note.width = Math.max(190, Math.min(800, element.offsetWidth + direction[0] * step));
+    if (direction[1]) note.height = Math.max(120, Math.min(2000, element.offsetHeight + direction[1] * step));
+    autosize(note, element); saveSoon();
+  });
+  const resizeHeight = document.createElement('button'); resizeHeight.className = 'note-resize-height';
+  resizeHeight.setAttribute('aria-label', 'Resize note height. Drag or use up and down arrow keys.');
+  resizeHeight.title = 'Drag up or down to change height; double-click for automatic height';
+  resizeHeight.addEventListener('dblclick', () => { record(); delete note.height; autosize(note, element); saveSoon(); });
+  resizeHeight.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    event.preventDefault(); record();
+    const step = event.shiftKey ? 1 : 10;
+    note.height = Math.max(120, Math.min(2000, element.offsetHeight + (event.key === 'ArrowDown' ? step : -step)));
+    autosize(note, element); saveSoon();
   });
   handle.addEventListener('keydown', event => {
     const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[event.key];
@@ -403,7 +431,7 @@ function buildNote(note, index) {
     element.style.left = `${note.x}px`; element.style.top = `${note.y}px`; saveSoon();
   });
   element.addEventListener('pointerdown', () => { setSelected(note.id); bringForward(note.id); });
-  element.append(title, content, actions, resize);
+  element.append(title, content, actions, resize, resizeHeight);
   noteElements.set(note.id, element);
   world.append(element);
   autosize(note, element);
@@ -563,8 +591,9 @@ viewport.addEventListener('pointerdown', event => {
   const note = noteElement && board.notes.find(n => n.id === noteElement.dataset.noteId);
   if (note && !handMode && !spaceHeld) {
     const resize = event.target.closest('.note-resize');
-    if (!resize && !event.target.closest('.note-drag')) return;
-    gesture = {type: resize ? 'resize' : 'note', pointerId: event.pointerId, start: point, note, element: noteElement, x: note.x, y: note.y, width: noteElement.offsetWidth, moved: false};
+    const resizeHeight = event.target.closest('.note-resize-height');
+    if (!resize && !resizeHeight && !event.target.closest('.note-drag')) return;
+    gesture = {type: resize ? 'resize' : resizeHeight ? 'resize-height' : 'note', pointerId: event.pointerId, start: point, note, element: noteElement, x: note.x, y: note.y, width: noteElement.offsetWidth, height: noteElement.offsetHeight, moved: false};
     event.preventDefault();
   } else {
     document.activeElement?.blur(); setSelected(null);
@@ -593,7 +622,7 @@ viewport.addEventListener('pointermove', event => {
   if (!gesture.moved && Math.hypot(dx, dy) < 4) return;
   if (!gesture.moved) {
     gesture.moved = true;
-    if (gesture.type === 'note' || gesture.type === 'resize') record();
+    if (gesture.type === 'note' || gesture.type === 'resize' || gesture.type === 'resize-height') record();
   }
   if (gesture.type === 'place') { movePreview(point); return; }
   if (gesture.type === 'pan') {
@@ -602,8 +631,9 @@ viewport.addEventListener('pointermove', event => {
   } else if (gesture.type === 'note') {
     gesture.note.x = gesture.x + dx / board.view.zoom; gesture.note.y = gesture.y + dy / board.view.zoom;
     gesture.element.style.left = `${gesture.note.x}px`; gesture.element.style.top = `${gesture.note.y}px`; gesture.element.classList.add('is-dragging');
-  } else if (gesture.type === 'resize') {
-    gesture.note.width = Math.max(190, Math.min(800, gesture.width + dx / board.view.zoom));
+  } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
+    if (gesture.type === 'resize') gesture.note.width = Math.max(190, Math.min(800, gesture.width + dx / board.view.zoom));
+    gesture.note.height = Math.max(120, Math.min(2000, gesture.height + dy / board.view.zoom));
     gesture.element.classList.add('is-resizing'); autosize(gesture.note, gesture.element);
   }
 });
