@@ -495,3 +495,6 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
 .viewport.is-connecting, .viewport.is-connecting .note, .viewport.is-connecting .note * { cursor: crosshair !important; }
 .note.is-string-start { outline: 2px solid #a94333; outline-offset: 4px; }
 .extra-supplies .index-button[aria-pressed=true] { background: #efe4dc; border-color: #c17b6a; color: #9b3e2d; }
+.note.polaroid .pin, .note.manila-folder .pin { width: 8px; height: 8px; background: #aa4a37; opacity: 1; }
+.note.polaroid .pin { top: 3px; }
+.note.manila-folder .pin { top: 9px; }

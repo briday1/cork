@@ -482,6 +482,7 @@ function buildPolaroid(note, index) {
   element.setAttribute('aria-label', 'Polaroid');
   const handle = document.createElement('div'); handle.className = 'note-drag'; handle.tabIndex = 0; handle.setAttribute('role', 'button');
   handle.setAttribute('aria-label', 'Move Polaroid. Drag or use arrow keys.'); handle.append(icon('grip'));
+  const pin = document.createElement('span'); pin.className = 'pin'; handle.append(pin);
   const photo = document.createElement('a'); photo.className = 'polaroid-photo'; photo.target = '_blank'; photo.rel = 'noopener noreferrer';
   photo.setAttribute('aria-label', 'Open full image in a new tab');
   const message = document.createElement('span'); message.className = 'photo-status'; message.textContent = 'Loading image…';
@@ -537,6 +538,7 @@ function buildFolder(note, index) {
   open.append(label, face); open.addEventListener('click', () => { if (Date.now() >= suppressNoteClickUntil && !handMode && !spaceHeld) openFolder(note, label, open); });
   const handle = document.createElement('div'); handle.className = 'note-drag'; handle.tabIndex = 0; handle.setAttribute('role', 'button');
   handle.setAttribute('aria-label', `Move ${note.title} folder. Drag or use arrow keys.`); handle.append(icon('grip'));
+  const pin = document.createElement('span'); pin.className = 'pin'; handle.append(pin);
   const actions = document.createElement('div'); actions.className = 'note-actions';
   actions.append(actionButton('Duplicate folder', 'copy', () => duplicateNote(note)), actionButton('Delete folder', 'trash', () => removeNote(note.id)));
   wireNoteMovement(element, note, handle);

@@ -25,6 +25,8 @@ Use **Find a category** to search the scrollable list. The sidebar works with 10
 
 **String** connects two different items. Click String, then the first item and the second. Red yarn joins their thumbtacks and follows them as you move, resize, pan, and zoom. Press Escape to cancel. Select a string and press Delete to remove it, or use Undo. Deleting an item also removes its strings; Undo restores both. Connections save with the board and appear in PDF exports.
 
+Photos and folders keep a visible thumbtack even without a connection.
+
 In the sidebar’s **⋯** menu, **Export PDF** downloads one page cropped closely around all board items, including items outside the current view. It preserves their arrangement and rotation, uses lossless 4× rendering (384 dpi at original size), and leaves out cork, controls, selection outlines, and shadows. The page has no background fill; most PDF viewers display it as white. Paper colors and photo frames remain. Very large individual notes use a lower capture scale to respect browser canvas limits. The PDF is image-based, so text is not selectable.
 
 Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
