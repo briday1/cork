@@ -161,7 +161,7 @@ export function validateBoard(data) {
     version: 1,
     name: typeof data.name === 'string' ? data.name.slice(0, 80) || 'My board' : 'My board',
     palette: Object.hasOwn(PALETTES, data.palette) ? data.palette : 'hsv',
-    theme: ['natural', 'pale', 'dark'].includes(data.theme) ? data.theme : 'natural',
+    theme: ['natural', 'pale', 'dark', 'paper-cream', 'paper-sage', 'paper-blue'].includes(data.theme) ? data.theme : 'natural',
     ...(Object.keys(normalizeNoteStyle(data.noteStyle)).length ? {noteStyle: normalizeNoteStyle(data.noteStyle)} : {}),
     notes,
     connections,

@@ -6,12 +6,14 @@ import {selectionBounds, notesInSelection} from './selection-core.js';
 import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp, duplicateBoardSnapshot} from './workspace.js';
 import {readBoardFile, writeBoardFile} from './board-file.js';
 import {resizePaper} from './paper-core.js';
+import {PAPER_TILE_SIZE, paperResolution, paintPaperTile} from './paper-texture.js';
 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
 const world = $('board-world');
 const corkTexture = document.querySelector('.cork-texture');
 const corkTiles = new Map();
+let textureVariant = '';
 // The photograph is 2048 × 1536: two image pixels per board unit at 100%.
 const corkTileSize = {width: 1024, height: 768};
 const appKey = `${STORAGE_KEY}:${location.pathname.replace(/index\.html$/, '')}`;
@@ -748,23 +750,32 @@ function renderStrings() {
 
 function updateCorkTexture(view) {
   corkTexture.style.transform = world.style.transform;
-  const {width, height} = corkTileSize;
-  const left = Math.floor(-view.x / view.zoom / width) - 1;
-  const right = Math.floor((viewport.clientWidth - view.x) / view.zoom / width) + 1;
-  const top = Math.floor(-view.y / view.zoom / height) - 1;
-  const bottom = Math.floor((viewport.clientHeight - view.y) / view.zoom / height) + 1;
+  const paper = board.theme.startsWith('paper-');
+  const resolution = paper ? paperResolution(view.zoom, window.devicePixelRatio) : 0;
+  const variant = paper ? `paper-${resolution}` : 'cork';
+  if (variant !== textureVariant) {
+    for (const tile of corkTiles.values()) tile.remove();
+    corkTiles.clear(); textureVariant = variant;
+  }
+  const {width, height} = paper ? {width:PAPER_TILE_SIZE, height:PAPER_TILE_SIZE} : corkTileSize;
+  const margin = paper ? 0 : 1;
+  const left = Math.floor(-view.x / view.zoom / width) - margin;
+  const right = Math.floor((viewport.clientWidth - view.x) / view.zoom / width) + margin;
+  const top = Math.floor(-view.y / view.zoom / height) - margin;
+  const bottom = Math.floor((viewport.clientHeight - view.y) / view.zoom / height) + margin;
   const visible = new Set();
   for (let row = top; row <= bottom; row++) {
     for (let column = left; column <= right; column++) {
       const key = `${column},${row}`;
       visible.add(key);
       if (corkTiles.has(key)) continue;
-      const tile = document.createElement('div');
-      tile.className = 'cork-tile';
+      const tile = document.createElement(paper ? 'canvas' : 'div');
+      tile.className = paper ? 'paper-tile' : 'cork-tile';
       tile.style.left = `${column * width}px`;
       tile.style.top = `${row * height}px`;
-      // Mirrored neighbors share the same photo edge, with no hard tile seams.
-      tile.style.transform = `scale(${column % 2 ? -1 : 1}, ${row % 2 ? -1 : 1})`;
+      if (paper) paintPaperTile(tile, column, row, resolution);
+      // Mirrored cork neighbors share the same photograph edge.
+      else tile.style.transform = `scale(${column % 2 ? -1 : 1}, ${row % 2 ? -1 : 1})`;
       corkTexture.append(tile);
       corkTiles.set(key, tile);
     }
@@ -1649,7 +1660,7 @@ $('image-file').addEventListener('change', async event => {
 $('cancel-placement').addEventListener('click', cancelPlacement);
 $('retry-categories').addEventListener('click', loadDefaultCategories);
 $('palette').addEventListener('change', () => { record(); board.palette = $('palette').value; renderCategories(); renderPalette(); updateNoteColors(); saveNow(); });
-$('theme').addEventListener('change', () => { record(); board.theme = $('theme').value; renderPalette(); saveNow(); });
+$('theme').addEventListener('change', () => { record(); board.theme = $('theme').value; renderPalette(); applyView(); saveNow(); });
 $('text-target').addEventListener('change', () => { textTarget = $('text-target').value; renderTextControls(); });
 for (const control of document.querySelectorAll('[data-text-part]')) {
   let recorded = false;

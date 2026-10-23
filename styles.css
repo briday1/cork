@@ -102,6 +102,11 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 .viewport{position:relative;flex:1;overflow:hidden;overflow:clip;background:#c2a07a;touch-action:none;cursor:var(--grab);outline:none;isolation:isolate}
 .cork-texture{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;transform-origin:0 0;will-change:transform;z-index:-1}
 .cork-tile{position:absolute;width:1025px;height:769px;background:url("./assets/cork-fine.webp") 0 0 / 100% 100% no-repeat;transform-origin:center}
+body[data-theme=paper-cream]{--board-paper:#e8d9b9}
+body[data-theme=paper-sage]{--board-paper:#b8c3ad}
+body[data-theme=paper-blue]{--board-paper:#afc1cf}
+body[data-theme^="paper-"] .viewport{background:var(--board-paper)}
+.paper-tile{position:absolute;width:512px;height:512px;background:var(--board-paper)}
 .board-world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0}
 .viewport.is-panning,.viewport.is-panning *{cursor:var(--grabbing)!important;user-select:none!important}
 .viewport.is-placing{cursor:crosshair}
@@ -778,6 +783,7 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .help-dialog p,.help-grid strong { color:var(--rail-muted); }
 body[data-ui-theme=dark][data-theme=natural] .cork-texture { filter:brightness(.72) saturate(.8); }
 body[data-ui-theme=dark] .board-tip { color:#e7dfcc; }
+body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 @media(pointer:coarse) {
   .sidebar .icon-button,.extra-supplies .index-button,.sidebar-settings-bar>button,.category-source summary { min-height:44px; }
   .sidebar .board-tools .icon-button { min-width:28px; }

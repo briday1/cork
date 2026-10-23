@@ -1,6 +1,6 @@
 # Cork
 
-A cork board for notes, index cards, Polaroid photos, and local folder links. An empty board shows plain cork.
+A cork board for notes, index cards, Polaroid photos, and local folder links. An empty board shows only its cork or textured paper background.
 
 [Open Cork](https://briday1.github.io/cork/)
 
@@ -107,7 +107,7 @@ No category count is hard-coded. Maintainers can still edit the repository list 
 The board uses a bundled photograph of real cork. The grain moves and scales with the notes as you pan and zoom, and mirrored photo edges keep the surface continuous. Board items cast soft shadows. Sticky notes and Polaroids have a small lifted lower corner, with a varied side and size that stays consistent across visits and board backups. Photos curl less than sticky notes. The cut-away corner shows the cork through it, and the shadow follows the paper shape. Index cards stay flat. Selected items use a bright, thick cyan outline. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. PDF export keeps the paper detail and omits board shadows. Asset source and license are in [assets/README.md](./assets/README.md).
 
 
-Use **Appearance** at the bottom of the sidebar to choose **System**, **Light**, or **Dark** for the interface. System is the default and follows operating-system changes; a manual choice stays remembered across board tabs. The paper-like sidebar uses plain text controls and small tool icons. The board menu holds file actions. You can also choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
+Use **Appearance** at the bottom of the sidebar to choose **System**, **Light**, or **Dark** for the interface. System is the default and follows operating-system changes; a manual choice stays remembered across board tabs. The paper-like sidebar uses plain text controls and small tool icons. The board menu holds file actions. For the board background, choose **Natural cork**, **Pale cork**, **Dark cork**, or textured construction paper in **Cream**, **Sage**, or **Blue**. Paper grain and fibers are generated from board coordinates, with different detail across the surface instead of a repeating image. The texture moves and scales with the board, and renders at the current zoom and display resolution. Each board remembers its background, including in saved board files and duplicates. PDF export omits either background. Independently choose a category color map:
 
 | Color map | Character |
 | --- | --- |
@@ -170,6 +170,7 @@ The `dist/` build copies the public files and stamps their URLs with a content v
 | `styles.css` | Cork, paper, responsive layouts, and themes |
 | `app.js` | Placement, cursor preview, dragging, editing, pan/zoom, saving, export/import |
 | `board-core.js` | Category parsing, color maps, coordinate transforms, import validation, list continuation |
+| `paper-texture.js` | Procedural paper grain and fibers at board coordinates, with zoom- and display-aware rendering |
 | `image-store.js` | Browser-local image originals, thumbnails, folder handles, and image backups |
 | `export-pdf.js`, `export-core.js` | High-resolution PDF capture, transparent page, and tight bounds |
 | `tests/core.test.mjs` | Tests for category loading rules, 100 HSV colors, positioning math, lists, and backups |

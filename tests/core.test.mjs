@@ -96,6 +96,14 @@ test('exports round trip text, arbitrary positions, width, appearance, and remov
   assert.deepEqual(validateBoard(JSON.parse(JSON.stringify(input))), input);
 });
 
+test('all paper backgrounds survive saved board files and unknown appearances keep the cork default', () => {
+  for (const theme of ['paper-cream', 'paper-sage', 'paper-blue']) {
+    const input = {...sample(), theme};
+    assert.deepEqual(validateBoard(JSON.parse(JSON.stringify(input))), input);
+  }
+  assert.equal(validateBoard({...sample(), theme:'unknown'}).theme, 'natural');
+});
+
 test('manual note height survives saving and import, with safe size limits', () => {
   const input = sample();
   input.notes[0].height = 340;
