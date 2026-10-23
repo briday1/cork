@@ -673,7 +673,7 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .sidebar-close svg { width:14px; height:14px; }
 .boards-section { margin:0 0 16px; }
 .boards-section { position:relative; }
-.board-tabs { display:flex; flex-wrap:wrap; max-height:138px; overflow-x:hidden; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--rail-rule) transparent; gap:3px 12px; padding-bottom:2px; }
+.board-tabs { display:flex; flex-direction:column; flex-wrap:nowrap; align-items:stretch; max-height:138px; overflow-x:hidden; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--rail-rule) transparent; gap:0; padding-bottom:2px; }
 .all-boards-button { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--rail-muted); padding:0 0 9px; }
 .all-boards-button>span:last-child { margin-left:3px; }
 .all-boards-button:hover { color:var(--rail-ink); }
@@ -687,10 +687,11 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .board-list-entry small { font-size:9px; color:var(--rail-muted); }
 .board-list-entry[aria-current=true]>span { text-decoration:underline; text-underline-offset:4px; }
 .all-boards-list p { font-size:11px; padding:8px 7px; color:var(--rail-muted); }
-.board-tab-row { flex-shrink:0; max-width:145px; border-radius:0; border-bottom:1px solid transparent; margin:0; gap:0; }
-.board-tab-row:has([aria-selected=true]) { background:transparent; border-bottom-color:var(--rail-accent); }
+.board-tab-row { flex-shrink:0; width:100%; max-width:none; border-radius:0; border-bottom:1px solid transparent; margin:0; gap:0; }
+.board-tab-row:has([aria-selected=true]) { background:transparent; border-bottom-color:transparent; }
 .board-tab { font-size:11px; padding:5px 1px 7px; color:var(--rail-muted); gap:4px; }
 .board-tab[aria-selected=true] { color:var(--rail-ink); }
+.board-tab[aria-selected=true] .board-tab-name { text-decoration:underline; text-underline-offset:5px; }
 .board-tab>svg { display:none; }
 .board-tab-dot { width:3px; height:3px; background:var(--rail-accent); }
 .close-board-tab { width:16px; height:24px; min-width:0; border-radius:0; color:var(--rail-muted); }
