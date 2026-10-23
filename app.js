@@ -837,7 +837,7 @@ function updateSelection() {
 
 function updateBoardTip() {
   $('board-tip').hidden = !board.notes.length || !$('selection-tools').hidden;
-  $('board-tip').textContent = stringMode ? (stringStart ? 'Select a different item.' : 'Select the first item.') : selectMode ? 'Click items or drag a box to select. Drag selected items to move them.' : 'Scroll to zoom. Drag the cork to pan.';
+  $('board-tip').textContent = stringMode ? (stringStart ? 'Select a different item.' : 'Select the first item.') : selectMode ? 'Click items or drag a box to select. Drag selected items to move them.' : 'Scroll to zoom. Drag the board to pan.';
 }
 
 function setSelectMode(active) {
