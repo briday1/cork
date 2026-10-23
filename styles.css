@@ -127,9 +127,8 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 .zoom-level{width:46px;font-size:11px;color:#6c7661;padding:8px 0;font-variant-numeric:tabular-nums}
 .note{position:absolute;width:248px;min-height:184px;padding:0 19px 21px;background:linear-gradient(175deg,#ffffff12,transparent 45%,#00000004),var(--note-color,#f2de9c);color:#3f4438;box-shadow:0 1px 2px #513d2126,1px 5px 9px -4px #513d2138;border-radius:1px 1px 3px 2px;transform:rotate(var(--tilt,0deg));transform-origin:50% 20px;cursor:default;transition:box-shadow .12s;touch-action:auto}
 .note:after{content:"";position:absolute;left:0;right:0;top:0;height:27px;background:linear-gradient(#ffffff16,#ffffff06);pointer-events:none}
-.note.is-selected{outline:1px solid #52694388;outline-offset:3px}
-.viewport.has-multi-selection .note.is-selected,.viewport.selection-mode .note.is-selected{outline:2px solid #477985;outline-offset:3px}
-.selection-box{position:absolute;pointer-events:none;border:1px solid #477985;background:#70adb62b;z-index:20000}
+.note.is-selected,.note.is-selected.is-resizing{outline:4px solid #00d9ff;outline-offset:3px}
+.selection-box{position:absolute;pointer-events:none;border:2px solid #00d9ff;background:#00d9ff22;z-index:20000}
 .viewport.selection-mode:not(.hand-mode),.viewport.is-box-selecting{cursor:crosshair}
 .viewport.selection-mode:not(.hand-mode) .note{cursor:move;user-select:none}
 .viewport.selection-mode .note textarea,.viewport.selection-mode .note button,.viewport.selection-mode .polaroid-photo,.viewport.selection-mode .note-resize,.viewport.selection-mode .note-resize-height{pointer-events:none}
@@ -519,9 +518,9 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
 .yarn-base { stroke: #9e3027; stroke-width: 2.4; }
 .yarn-twist { stroke: #e06e57; stroke-width: .7; stroke-dasharray: 1 2; opacity: .9; }
 .connection-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; outline: none; }
-.yarn.is-selected .yarn-base { stroke: #00cfe8; stroke-width: 3.5; }
-.yarn.is-selected .yarn-twist { stroke: #bafaff; }
 .yarn:focus-within .yarn-base { stroke-width: 4; }
+.yarn.is-selected .yarn-base { stroke: #00d9ff; stroke-width: 5; }
+.yarn.is-selected .yarn-twist { stroke: #e1ffff; }
 .connection-pin { pointer-events: none; }
 .note.is-connected .pin { opacity: 0 !important; }
 .viewport.is-connecting, .viewport.is-connecting .note, .viewport.is-connecting .note * { cursor: crosshair !important; }
