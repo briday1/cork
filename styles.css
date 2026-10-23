@@ -2,8 +2,9 @@
 
 *{box-sizing:border-box}
 html,body{width:100%;height:100%;margin:0;overflow:hidden}
-body{display:flex;background:var(--paper);color:var(--ink)}
+body{display:flex;background:var(--paper);color:var(--ink);-webkit-user-select:none;user-select:none}
 button,input,select,textarea{font:inherit}
+input,textarea,[contenteditable="true"]{-webkit-user-select:text;user-select:text}
 button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
 button{color:inherit;cursor:pointer}
 button{border:0;background:none}
