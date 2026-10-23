@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {blankBoard} from '../board-core.js';
-import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp} from '../workspace.js';
+import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp, duplicateBoardSnapshot} from '../workspace.js';
 import {readBoardFile, writeBoardFile} from '../board-file.js';
 
 const storage = () => {
@@ -60,6 +60,20 @@ test('file-change comparisons recognize edits, undo, and camera changes', () => 
   copy.name = 'Changed'; assert.notEqual(boardStamp(copy), original);
   copy.name = board.name; assert.equal(boardStamp(copy), original);
   copy.view.zoom = 1.1; assert.notEqual(boardStamp(copy), original);
+});
+
+test('duplicating a board copies its content and text styles without sharing mutable state', () => {
+  const board = {...blankBoard(), name:'Show', noteStyle:{header:{font:'serif'}}, notes:[
+    {id:'idea',type:'note',category:'Ideas',title:'Ideas',text:'Original approach',x:30,y:40,tilt:1,style:{body:{size:16}}},
+    {id:'photo',type:'image',category:'',title:'Photo',text:'Caption',x:400,y:40,tilt:0,imageId:'original-image'},
+  ],connections:[{id:'link',from:'idea',to:'photo'}]};
+  const copy = duplicateBoardSnapshot(board,['Show','Show copy']);
+  assert.equal(copy.name,'Show copy 2');
+  assert.deepEqual(copy.connections,board.connections);
+  assert.equal(copy.notes[1].imageId,'original-image','immutable image assets can be reused');
+  copy.notes[0].text='Another approach'; copy.notes[0].style.body.size=22; copy.noteStyle.header.font='mono'; copy.connections.length=0;
+  assert.equal(board.notes[0].text,'Original approach'); assert.equal(board.notes[0].style.body.size,16);
+  assert.equal(board.noteStyle.header.font,'serif'); assert.equal(board.connections.length,1);
 });
 
 test('board file input validates without replacing an existing board', async () => {

@@ -3,7 +3,7 @@ import {prepareImage, putImage, getImage, exportImages, importImages, putFolder,
 import {connectionGeometry} from './export-core.js';
 import {readCategoryFile, readCategoryCache, writeCategoryCache, readLinkedCategories, getCategoryHandle, putCategoryHandle} from './category-file.js';
 import {selectionBounds, notesInSelection} from './selection-core.js';
-import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp} from './workspace.js';
+import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp, duplicateBoardSnapshot} from './workspace.js';
 import {readBoardFile, writeBoardFile} from './board-file.js';
 import {resizePaper} from './paper-core.js';
 
@@ -48,6 +48,9 @@ const noteElements = new Map();
 const imageResources = new Map();
 const folderHandles = new Map();
 const activePointers = new Map();
+const systemAppearance = matchMedia('(prefers-color-scheme: dark)');
+let uiThemePreference = 'system';
+try { const preference = localStorage.getItem(`${appKey}:ui-theme`); if (['system', 'light', 'dark'].includes(preference)) uiThemePreference = preference; } catch { /* System theme remains available. */ }
 const compactLayout = matchMedia('(max-width: 680px), (max-height: 500px) and (pointer: coarse)');
 let mobileEditing = null;
 let caretFrame = 0;
@@ -95,6 +98,7 @@ function fileChanged(session = activeSession) {
 
 function renderBoardTabs() {
   const list = $('board-tabs'); list.replaceChildren();
+  $('boards-section').hidden = workspace.boards.filter(item => item.open).length < 2;
   for (const entry of workspace.boards.filter(item => item.open)) {
     const row = document.createElement('div'); row.className = 'board-tab-row';
     const tab = document.createElement('button'); tab.className = 'board-tab'; tab.id = `tab-${entry.id}`;
@@ -131,11 +135,14 @@ function updateBoardFiles() {
     tab.title = `${item.file?.name || 'Saved in this browser'}${dirty ? ' · Unsaved file changes' : ''}`;
   }
   $('board-file-name').textContent = entry.file?.name || 'Browser only';
+  document.querySelector('.board-file-line').hidden = !entry.file;
+  $('save-board').classList.toggle('has-changes', fileChanged());
   $('board-file-name').title = entry.file ? `${entry.file.name}${fileChanged() ? ' · Unsaved file changes' : ''}` : 'Save to choose a local board JSON file';
   $('save-board').disabled = fileTasks.has(activeSession.id) || !activeSession.handleReady;
   $('save-board').textContent = fileTasks.has(activeSession.id) ? 'Saving…' : 'Save';
   $('save-board-as').disabled = fileTasks.has(activeSession.id);
   $('new-board').disabled = workspaceBlocked || pdfExporting;
+  $('duplicate-board').disabled = workspaceBlocked || pdfExporting;
   $('open-board').disabled = workspaceBlocked || openingBoard || pdfExporting;
 }
 
@@ -186,6 +193,36 @@ function newBoard() {
   catch { return toast('Browser storage is full. Save a board file before adding another tab.'); }
   workspace.boards.push({id, name: fresh.name, open: true, file: null});
   switchBoard(id); saveNow();
+}
+
+async function duplicateBoard() {
+  if (workspaceBlocked || pdfExporting) return;
+  document.activeElement?.blur(); saveNow(); closeMenu();
+  const snapshot = duplicateBoardSnapshot(board, workspace.boards.map(entry => entry.name));
+  const sourceKey = categoriesKey;
+  let copiedCategories;
+  try { copiedCategories = categoryFile || readCategoryCache(localStorage, sourceKey); }
+  catch { /* The default list remains available if the cache is damaged. */ }
+  const name = snapshot.name;
+  const id = crypto.randomUUID(), keys = boardKeys(appKey, id);
+  try {
+    localStorage.setItem(keys.board, JSON.stringify(snapshot));
+    if (copiedCategories) writeCategoryCache(localStorage, keys.categories, copiedCategories);
+  } catch { return toast('The board could not be duplicated. Browser storage is unavailable or full.'); }
+  // Images and folder handles are immutable shared resources; the board data
+  // and file destination are independent. No original file is inherited.
+  workspace.boards.push({id, name, open: true, file: null});
+  switchBoard(id); saveNow();
+  toast('Board duplicated. Save will ask for a new board file.');
+  if (copiedCategories) {
+    try {
+      const linked = await getCategoryHandle(sourceKey);
+      if (linked?.token === copiedCategories.token) {
+        await putCategoryHandle(keys.categories, linked);
+        if (activeSession.id === id) loadCategories();
+      }
+    } catch { /* The copied category list works without its file handle. */ }
+  }
 }
 
 function closeBoardTab(id) {
@@ -292,7 +329,7 @@ function applyCategoryText(text) {
 }
 
 function renderCategorySource() {
-  $('category-source-name').textContent = categoryFile?.name || 'Default categories';
+  $('category-source-name').textContent = categoryFile?.name || 'Categories';
   $('category-source-status').textContent = categoryStatus || (categoryFile ? 'Saved in this browser. Use Refresh after editing the file.' : 'Load your own .txt file to use instead.');
   $('category-source').classList.toggle('is-local', Boolean(categoryFile));
   $('refresh-categories').hidden = !categoryFile;
@@ -472,6 +509,18 @@ function renderCategories() {
   }
 }
 
+function applyInterfaceTheme() {
+  const theme = uiThemePreference === 'system' ? (systemAppearance.matches ? 'dark' : 'light') : uiThemePreference;
+  document.body.dataset.uiTheme = theme;
+  $('ui-theme').value = uiThemePreference;
+  document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#242520' : '#f2efe6';
+}
+
+function toggleSidebarSettings(id) {
+  const open = !$(id).open;
+  for (const other of ['text-settings', 'appearance-settings']) $(other).open = other === id && open;
+}
+
 function applyNoteStyle(element, style = {}, type = 'note') {
   style ||= {};
   for (const part of ['header', 'body']) {
@@ -508,6 +557,7 @@ function renderTextControls() {
     const mixed = values.size > 1, value = mixed ? '' : [...values][0];
     control.value = value;
     control.classList.toggle('is-mixed', mixed);
+    if (field === 'weight') control.querySelector('[value=""]').textContent = mixed ? 'Mixed' : 'Default';
     control.title = mixed ? 'Mixed values; choose a value to apply to every selected note' : control.getAttribute('aria-label');
     if (control.type === 'number') control.placeholder = mixed ? 'Mixed' : 'Auto';
   }
@@ -1568,8 +1618,18 @@ $('reset-text-style').addEventListener('click', () => {
   renderTextControls(); queueStrings(); saveNow();
 });
 $('edit-text').addEventListener('click', () => {
-  textTarget = 'selected'; setSidebar(true); $('text-settings').open = true; renderTextControls();
+  textTarget = 'selected'; setSidebar(true); $('appearance-settings').open = false; $('text-settings').open = true; renderTextControls();
 });
+for (const id of ['text-settings', 'appearance-settings']) {
+  $(`${id}-toggle`).addEventListener('click', () => toggleSidebarSettings(id));
+  $(id).addEventListener('toggle', () => $(`${id}-toggle`).setAttribute('aria-expanded', String($(id).open)));
+}
+$('ui-theme').addEventListener('change', () => {
+  uiThemePreference = $('ui-theme').value; applyInterfaceTheme();
+  try { localStorage.setItem(`${appKey}:ui-theme`, uiThemePreference); } catch { /* The choice still applies for this visit. */ }
+});
+systemAppearance.addEventListener('change', () => { if (uiThemePreference === 'system') applyInterfaceTheme(); });
+
 $('board-name').addEventListener('focus', record);
 $('board-name').addEventListener('input', () => { board.name = $('board-name').value; saveSoon(); });
 $('board-name').addEventListener('blur', () => { if (!board.name.trim()) { board.name = 'My board'; $('board-name').value = board.name; saveSoon(); } });
@@ -1747,15 +1807,16 @@ async function saveBoardFile(saveAs = false) {
 }
 
 $('new-board').addEventListener('click', newBoard);
+$('duplicate-board').addEventListener('click', duplicateBoard);
 $('open-board').addEventListener('click', chooseBoardFiles);
 $('save-board').addEventListener('click', () => saveBoardFile());
 $('save-board-as').addEventListener('click', () => saveBoardFile(true));
 $('board-tabs').addEventListener('keydown', event => {
   const tabs = [...$('board-tabs').querySelectorAll('[role=tab]')];
   const index = tabs.indexOf(event.target);
-  if (index < 0 || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+  if (index < 0 || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + tabs.length) % tabs.length;
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1) + tabs.length) % tabs.length;
   const id = tabs[next].dataset.boardId; switchBoard(id); $(`tab-${id}`).focus();
 });
 $('import-file').addEventListener('change', async event => {
@@ -1770,7 +1831,7 @@ $('import-file').addEventListener('change', async event => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !document.querySelector('dialog[open]')) { event.preventDefault(); saveBoardFile(event.shiftKey); return; }
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); if (compactLayout.matches) setSidebar(false); return; }
+  if (event.key === 'Escape') { cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); return; }
@@ -1794,6 +1855,7 @@ window.addEventListener('pagehide', saveNow);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); else checkCategoryFile(); });
 window.addEventListener('focus', checkCategoryFile);
 window.addEventListener('storage', event => {
+  if (event.key === `${appKey}:ui-theme`) { uiThemePreference = ['light', 'dark'].includes(event.newValue) ? event.newValue : 'system'; applyInterfaceTheme(); return; }
   if (event.key === categoriesKey) { loadCategories(); return; }
   if (event.key === `${appKey}:workspace`) {
     workspaceBlocked = true; updateBoardFiles();
@@ -1820,6 +1882,7 @@ compactLayout.addEventListener('change', () => {
 window.visualViewport?.addEventListener('resize', updateVisibleHeight);
 window.visualViewport?.addEventListener('scroll', updateVisibleHeight);
 
+applyInterfaceTheme();
 renderBoard();
 entryFor().name = board.name;
 renderBoardTabs(); updateHistory(); rememberWorkspace(); restoreBoardHandle(activeSession);

@@ -62,7 +62,9 @@ Shortcuts do not fire while you type in a text field.
 
 ## Board tabs and local files
 
-Use **+** beside **Boards** for a new board, or the folder button to open one or more board `.json` files. The tabs stay in the left sidebar. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
+Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open one or more board `.json` files. The tabs stay in the left sidebar, with a simple underline on the active tab. The tab strip appears when more than one board is open. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
+
+**⋯ → Duplicate board** creates an independent copy in a new tab, including notes, connections, appearance, text styles, and its categories list. It starts without a linked board file. **Save** asks for a new destination; choosing a file already linked to another board is blocked. Editing a duplicate never changes the source board.
 
 **Save** (Ctrl/Cmd+S) chooses a local board file the first time, then writes to that file. **⋯ → Save as…** (Ctrl/Cmd+Shift+S) chooses another file. File links are remembered where the browser supports them; it may ask for access again. A small dot on a tab and “File has changes” mean the browser copy is ahead of the saved file. Browser saving continues automatically; file writes happen when you use Save. If a file has changed outside Cork, Save asks you to use Save as to preserve both copies. Browsers without local file writing download the board instead and remember the filename.
 
@@ -70,7 +72,7 @@ Load a categories `.txt` file independently for each tab, or keep the repository
 
 ## Text style
 
-Open **Text style** in the sidebar. Choose **New notes** to set defaults, or **Selected notes** to change one note or a group. The **Text** button beside the selection controls opens the same settings. Heading and body have separate **Sans**, **Serif**, or **Mono** fonts, sizes, and weights. Changing one setting leaves the other settings alone. Blank size fields use the usual size for that type of paper; clear a size to restore it. **Reset** restores the standard style for the chosen target. Mixed selections keep their differences until you change that field.
+Use **Text** at the bottom of the sidebar to open the text settings. Choose **New notes** to set defaults, or **Selected notes** to change one note or a group. The **Text** button beside the selection controls opens the same settings. Heading and body have separate **Sans**, **Serif**, or **Mono** fonts, sizes, and weights. Changing one setting leaves the other settings alone. New notes use the usual paper sizes until you enter a size. Selected notes show their current sizes; clear a size to restore the usual size for that type of paper. **Reset** restores the standard style for the chosen target. Mixed selections keep their differences until you change that field.
 
 Defaults are copied into newly placed notes, cards, photos, and folder labels; existing items keep their own style. Group formatting is one undoable change. Text style saves in each board file and appears in PDF exports. A Polaroid caption still shrinks when necessary to fit its fixed footer.
 
@@ -78,7 +80,7 @@ Defaults are copied into newly placed notes, cards, photos, and folder labels; e
 
 The repository’s **[`categories.txt`](./categories.txt)** is a default list. You do not need to edit or fork the repository to use your own categories, and you keep receiving app updates.
 
-Open **Default categories** (or your current filename) above the sidebar search. Choose **Save a copy** to download a starting list, edit it with a text editor, and choose **Load file…** to select your local `.txt` file. Each nonempty line is a category:
+Open **Categories** (or your current filename) above the sidebar search. Choose **Save a copy** to download a starting list, edit it with a text editor, and choose **Load file…** to select your local `.txt` file. Each nonempty line is a category:
 
 ```text
 * Ideas
@@ -106,7 +108,7 @@ The board uses a bundled photograph of real cork. The grain moves and scales wit
 
 ![Soft shadows and small corner curls on sticky notes, beside a flat index card.](./docs/cork-paper.jpg)
 
-Open **Appearance** at the bottom of the sidebar to choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
+Use **Appearance** at the bottom of the sidebar to choose **System**, **Light**, or **Dark** for the interface. System is the default and follows operating-system changes; a manual choice stays remembered across board tabs. The paper-like sidebar uses plain text controls and small tool icons. The board menu holds file actions. You can also choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
 
 | Color map | Character |
 | --- | --- |

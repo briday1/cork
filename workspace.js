@@ -33,6 +33,15 @@ export function readWorkspaceBoard(storage, base, id) {
   return saved ? validateBoard(JSON.parse(saved)) : blankBoard();
 }
 
+export function duplicateBoardSnapshot(board, names) {
+  const snapshot = validateBoard(JSON.parse(JSON.stringify(board)));
+  const existing = new Set(names), baseName = `${snapshot.name.slice(0, 70)} copy`;
+  let name = baseName, number = 2;
+  while (existing.has(name)) name = `${baseName} ${number++}`;
+  snapshot.name = name;
+  return snapshot;
+}
+
 // Compact comparison against the last file save, including undo and camera changes.
 export function boardStamp(board) {
   // Canonical property order and omitted defaults must match exported boards.
