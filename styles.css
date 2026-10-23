@@ -757,7 +757,7 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .sidebar-bottom>.appearance-section { display:none; }
 .sidebar-bottom>.appearance-section[open] { display:block; position:absolute; z-index:50; bottom:91px; left:-1px; right:-1px; margin:0; padding:13px 12px 14px; background:var(--rail-bg); border:1px solid var(--rail-rule); box-shadow:0 5px 20px #25201516; }
 .sidebar-bottom>.appearance-section summary { color:var(--rail-ink); font-size:12px; padding:0 0 12px; }
-.text-style-grid { grid-template-columns:42px minmax(0,1fr) 34px minmax(0,1.15fr); gap:9px 3px; }
+.text-style-grid { grid-template-columns:35px minmax(0,1fr) 26px minmax(0,1.5fr); gap:9px 3px; }
 .text-settings select,.text-settings input { padding:6px 2px; border:0; border-radius:0; border-bottom:1px solid var(--rail-rule); background:none; color:var(--rail-ink); font-size:10px; }
 .text-style-grid>label,.text-style-grid>span,.text-settings-target button { color:var(--rail-muted); }
 .text-settings-target { margin-top:1px; }

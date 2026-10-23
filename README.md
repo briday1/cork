@@ -4,7 +4,7 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 [Open Cork](https://briday1.github.io/cork/)
 
-![Cork with notes, a ruled index card, a Polaroid, and a folder](./docs/cork-board.jpg)
+![Cork with a minimal sidebar, board tabs, sticky notes, and a flat index card](./docs/cork-board.jpg)
 
 **Plain HTML, CSS, and JavaScript. No backend, accounts, API keys, or install step required.** GitHub Pages serves the same static files that run locally.
 
@@ -19,7 +19,7 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 **Select multiple items:** Shift-click to add or remove notes, cards, photos, folders, or strings from the selection. The **Select tool** beside the hand tool also lets you click to toggle items or drag a box across the cork. Hold Shift while drawing another box to add to the selection. Drag a selected item in Select mode, or its top edge in normal mode, to move the selected papers together; strings follow their pins. Arrow keys on a selected item’s move handle move the whole group. Use **Delete selected elements** (or Delete/Backspace) to remove the selection and any attached strings in one undoable change. **Clear selection** clears the group; Escape also exits Select mode. Hold Space to pan temporarily without losing your selection.
 
-![Three board elements selected together, with group controls and the Select tool active.](./docs/cork-selection.jpg)
+![Selected notes with separate heading and body typography controls.](./docs/cork-selection.jpg)
 
 Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Random category** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
 
@@ -37,7 +37,6 @@ Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the han
 
 Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for file saving, exports, recently closed boards, and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
 
-![An empty board with the sidebar collapsed](./docs/cork-full-board.jpg)
 
 ### Keyboard shortcuts
 
@@ -70,6 +69,8 @@ Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open
 
 Load a categories `.txt` file independently for each tab, or keep the repository default. Two boards can deliberately use the same categories file. Opening a board file that is already linked brings its existing tab forward. Close a tab with its ×; its cached board and file pair remain available under **⋯ → Recently closed**. Closing a tab does not delete a local file. For a portable setup, keep each board `.json` together with its categories `.txt`; choose that pair once in a new browser.
 
+![Dark interface with the searchable All boards menu showing open and closed boards.](./docs/cork-dark-boards.jpg)
+
 ## Text style
 
 Use **Text** at the bottom of the sidebar to open the text settings. Choose **New notes** to set defaults, or **Selected notes** to change one note or a group. The **Text** button beside the selection controls opens the same settings. Heading and body have separate **Sans**, **Serif**, or **Mono** fonts, sizes, and weights. Changing one setting leaves the other settings alone. New notes use the usual paper sizes until you enter a size. Selected notes show their current sizes; clear a size to restore the usual size for that type of paper. **Reset** restores the standard style for the chosen target. Mixed selections keep their differences until you change that field.
@@ -100,13 +101,11 @@ Leading/trailing spaces and empty lines are ignored. Duplicate names are removed
 
 No category count is hard-coded. Maintainers can still edit the repository list to change the default for people who have not loaded a local list; it is fetched without caching. App updates and changes to that default never replace someone’s loaded local list.
 
-![Category file controls in the sidebar, with Load file and Save a copy.](./docs/cork-categories.jpg)
 
 ## Appearance and color maps
 
 The board uses a bundled photograph of real cork. The grain moves and scales with the notes as you pan and zoom, and mirrored photo edges keep the surface continuous. Board items cast soft shadows. Sticky notes and Polaroids have a small lifted lower corner, with a varied side and size that stays consistent across visits and board backups. Photos curl less than sticky notes. The cut-away corner shows the cork through it, and the shadow follows the paper shape. Index cards stay flat. Selected items use a bright, thick cyan outline. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. PDF export keeps the paper detail and omits board shadows. Asset source and license are in [assets/README.md](./assets/README.md).
 
-![Soft shadows and small corner curls on sticky notes, beside a flat index card.](./docs/cork-paper.jpg)
 
 Use **Appearance** at the bottom of the sidebar to choose **System**, **Light**, or **Dark** for the interface. System is the default and follows operating-system changes; a manual choice stays remembered across board tabs. The paper-like sidebar uses plain text controls and small tool icons. The board menu holds file actions. You can also choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
 
