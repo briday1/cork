@@ -1,8 +1,11 @@
-import {STORAGE_KEY, parseCategoryFile, missingBoardCategories, directoryNameFromFiles, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
+import {normalizeNoteStyle, NOTE_FONTS, STORAGE_KEY, parseCategoryFile, missingBoardCategories, directoryNameFromFiles, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
 import {prepareImage, putImage, getImage, exportImages, importImages, putFolder, getFolder} from './image-store.js';
 import {connectionGeometry} from './export-core.js';
 import {readCategoryFile, readCategoryCache, writeCategoryCache, readLinkedCategories, getCategoryHandle, putCategoryHandle} from './category-file.js';
 import {selectionBounds, notesInSelection} from './selection-core.js';
+import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp} from './workspace.js';
+import {readBoardFile, writeBoardFile} from './board-file.js';
+import {resizePaper} from './paper-core.js';
 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
@@ -11,8 +14,12 @@ const corkTexture = document.querySelector('.cork-texture');
 const corkTiles = new Map();
 // The photograph is 2048 × 1536: two image pixels per board unit at 100%.
 const corkTileSize = {width: 1024, height: 768};
-const storageKey = `${STORAGE_KEY}:${location.pathname.replace(/index\.html$/, '')}`;
-const categoriesKey = `${storageKey}:categories`;
+const appKey = `${STORAGE_KEY}:${location.pathname.replace(/index\.html$/, '')}`;
+let storageKey = appKey, categoriesKey = `${appKey}:categories`;
+let workspace, activeSession, workspaceBlocked = false;
+const sessions = new Map(), fileTasks = new Set();
+let textTarget = 'new', textSelection = '';
+let openingBoard = false, categoryPickSession = null, imagePickSession = null, folderPickSession = null;
 let board = blankBoard();
 let categories = [];
 let frequentCategories = new Set();
@@ -30,15 +37,13 @@ let gesture = null;
 let categoryLoadFailed = false;
 let saveTimer;
 let toastTimer;
-let pendingImport;
-let pendingImages = [];
 let folderPickTarget = null;
 let pdfExporting = false;
 let stringMode = false, stringStart = null, stringFrame = 0, stringLayer;
 let savingBlocked = false;
 let startupProblem = '';
-const undoStack = [];
-const redoStack = [];
+let undoStack = [];
+let redoStack = [];
 const noteElements = new Map();
 const imageResources = new Map();
 const folderHandles = new Map();
@@ -50,15 +55,150 @@ let largestVisibleHeight = window.innerHeight;
 let lastViewportWidth = window.innerWidth;
 let suppressNoteClickUntil = 0;
 let desktopSidebarOpen = true;
-try { desktopSidebarOpen = localStorage.getItem(`${storageKey}:sidebar`) !== 'closed'; } catch { /* Board saving reports unavailable storage. */ }
+try { desktopSidebarOpen = localStorage.getItem(`${appKey}:sidebar`) !== 'closed'; } catch { /* Board saving reports unavailable storage. */ }
 
 try {
-  const saved = localStorage.getItem(storageKey);
-  if (saved) board = validateBoard(JSON.parse(saved));
+  workspace = readWorkspace(localStorage, appKey);
 } catch (error) {
-  savingBlocked = true;
-  startupProblem = 'Saved board could not be opened. Export is available; the stored copy has not been overwritten.';
-  console.warn('Cork could not load the saved board:', error.message);
+  workspaceBlocked = true;
+  workspace = {version: 1, activeId: 'original', boards: [{id: 'original', name: 'My board', open: true, file: null}]};
+  startupProblem = 'Saved board tabs could not be opened. The saved copies have been left untouched.';
+}
+activeSession = getSession(workspace.activeId);
+board = activeSession.board;
+({board: storageKey, categories: categoriesKey} = boardKeys(appKey, activeSession.id));
+undoStack = activeSession.undo; redoStack = activeSession.redo;
+savingBlocked = activeSession.blocked;
+
+function getSession(id) {
+  if (!sessions.has(id)) {
+    const session = {id, board: blankBoard(), undo: [], redo: [], blocked: false, handle: null, handleReady: false};
+    try { session.board = readWorkspaceBoard(localStorage, appKey, id); }
+    catch { session.blocked = true; session.problem = 'This saved board could not be opened. Its stored copy has not been overwritten.'; }
+    sessions.set(id, session);
+  }
+  return sessions.get(id);
+}
+
+function entryFor(session = activeSession) { return workspace.boards.find(entry => entry.id === session.id); }
+
+function rememberWorkspace() {
+  if (workspaceBlocked) return false;
+  try { writeWorkspace(localStorage, appKey, workspace); return true; }
+  catch { toast('Board tabs could not be remembered. Save your board files before leaving.'); return false; }
+}
+
+function fileChanged(session = activeSession) {
+  const file = entryFor(session)?.file;
+  return Boolean(file && file.stamp !== boardStamp(session === activeSession ? board : session.board));
+}
+
+function renderBoardTabs() {
+  const list = $('board-tabs'); list.replaceChildren();
+  for (const entry of workspace.boards.filter(item => item.open)) {
+    const row = document.createElement('div'); row.className = 'board-tab-row';
+    const tab = document.createElement('button'); tab.className = 'board-tab'; tab.id = `tab-${entry.id}`;
+    tab.dataset.boardId = entry.id; tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', String(entry.id === workspace.activeId));
+    tab.setAttribute('aria-controls', 'viewport'); tab.tabIndex = entry.id === workspace.activeId ? 0 : -1;
+    tab.append(icon('card'));
+    const label = document.createElement('span'); label.className = 'board-tab-name'; label.textContent = entry.name || 'My board';
+    const dot = document.createElement('span'); dot.className = 'board-tab-dot'; dot.setAttribute('aria-hidden', 'true');
+    tab.append(label, dot); tab.addEventListener('click', () => switchBoard(entry.id));
+    const close = document.createElement('button'); close.className = 'close-board-tab'; close.append(icon('close'));
+    close.setAttribute('aria-label', `Close ${entry.name || 'My board'} tab`);
+    close.title = 'Close tab; the board stays in Recently closed';
+    close.addEventListener('click', () => closeBoardTab(entry.id));
+    row.append(tab, close); list.append(row);
+  }
+  const closed = $('closed-boards'); closed.replaceChildren();
+  for (const entry of workspace.boards.filter(item => !item.open).reverse()) {
+    const button = document.createElement('button'); button.textContent = entry.name || 'My board';
+    button.addEventListener('click', () => { entry.open = true; switchBoard(entry.id); closeMenu(); }); closed.append(button);
+  }
+  $('recent-boards').hidden = !closed.childElementCount;
+  updateBoardFiles();
+}
+
+function updateBoardFiles() {
+  const entry = entryFor();
+  for (const tab of $('board-tabs').querySelectorAll('.board-tab')) {
+    const item = workspace.boards.find(item => item.id === tab.dataset.boardId), session = sessions.get(item.id);
+    tab.querySelector('.board-tab-name').textContent = item.name || 'My board';
+    tab.nextElementSibling?.setAttribute('aria-label', `Close ${item.name || 'My board'} tab`);
+    const dirty = session ? fileChanged(session) : false;
+    tab.classList.toggle('has-file-changes', dirty);
+    tab.title = `${item.file?.name || 'Saved in this browser'}${dirty ? ' · Unsaved file changes' : ''}`;
+  }
+  $('board-file-name').textContent = entry.file?.name || 'Browser only';
+  $('board-file-name').title = entry.file ? `${entry.file.name}${fileChanged() ? ' · Unsaved file changes' : ''}` : 'Save to choose a local board JSON file';
+  $('save-board').disabled = fileTasks.has(activeSession.id) || !activeSession.handleReady;
+  $('save-board').textContent = fileTasks.has(activeSession.id) ? 'Saving…' : 'Save';
+  $('save-board-as').disabled = fileTasks.has(activeSession.id);
+  $('new-board').disabled = workspaceBlocked || pdfExporting;
+  $('open-board').disabled = workspaceBlocked || openingBoard || pdfExporting;
+}
+
+async function restoreBoardHandle(session) {
+  if (session.handleReady) return;
+  try {
+    const file = entryFor(session).file;
+    if (file) {
+      const saved = await getCategoryHandle(boardKeys(appKey, session.id).file);
+      if (saved?.token === file.token) session.handle = saved.handle;
+    }
+  } catch { /* Cached boards remain available without file permissions. */ }
+  session.handleReady = true;
+  if (session === activeSession) updateBoardFiles();
+}
+
+function switchBoard(id) {
+  if (id === activeSession.id) { entryFor().open = true; renderBoardTabs(); rememberWorkspace(); return; }
+  if (pdfExporting) return toast('Finish the PDF export before switching boards.');
+  document.activeElement?.blur(); cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false);
+  saveNow(); activeSession.board = board; activeSession.blocked = savingBlocked;
+  categoryRevision++; cancelAnimationFrame(caretFrame); mobileEditing = null;
+  $('toast').hidden = true; closeMenu();
+  activeSession = getSession(id); board = activeSession.board;
+  workspace.activeId = id; entryFor().open = true;
+  ({board: storageKey, categories: categoriesKey} = boardKeys(appKey, id));
+  savingBlocked = activeSession.blocked;
+  undoStack = activeSession.undo; redoStack = activeSession.redo;
+  selected.clear(); selectedStrings.clear(); activePointers.clear();
+  pointer = null; handMode = false; spaceHeld = false; updateHandMode();
+  categories = []; frequentCategories.clear(); categoriesReady = false; categoryLoadFailed = false;
+  categoryFile = null; categoryHandle = null; categoryBusy = false; categoryStatus = ''; lastCategoryCheck = 0;
+  $('category-search').value = ''; $('category-source').open = false;
+  renderBoard(); updateHistory(); renderBoardTabs(); rememberWorkspace();
+  loadCategories(); restoreBoardHandle(activeSession);
+  if (savingBlocked) { setSaveStatus('Saving paused — export your board', true); toast(activeSession.problem || 'This board changed in another browser tab. Reload before editing it.'); }
+  else showSavedStatus();
+}
+
+function newBoard() {
+  if (workspaceBlocked || pdfExporting) return;
+  const id = crypto.randomUUID(), fresh = blankBoard();
+  const names = new Set(workspace.boards.map(entry => entry.name));
+  let number = 1; while (names.has(`Board ${number}`)) number++;
+  fresh.name = `Board ${number}`;
+  // Store the content before adding a tab, so a quota failure cannot replace a board.
+  try { localStorage.setItem(boardKeys(appKey, id).board, JSON.stringify(fresh)); }
+  catch { return toast('Browser storage is full. Save a board file before adding another tab.'); }
+  workspace.boards.push({id, name: fresh.name, open: true, file: null});
+  switchBoard(id); saveNow();
+}
+
+function closeBoardTab(id) {
+  if (workspaceBlocked || pdfExporting) return;
+  if (fileTasks.has(id)) return toast('Wait for this board to finish saving.');
+  const entry = workspace.boards.find(item => item.id === id);
+  if (id === activeSession.id) {
+    const other = workspace.boards.find(item => item.open && item.id !== id);
+    if (other) switchBoard(other.id); else newBoard();
+    if (activeSession.id === id) return;
+  }
+  entry.open = false; rememberWorkspace(); renderBoardTabs();
+  $('board-tabs').querySelector('[aria-selected=true]')?.focus({preventScroll: true});
 }
 
 function icon(name) {
@@ -75,12 +215,18 @@ function setSaveStatus(text, error = false) {
   $('save-status').classList.toggle('is-error', error);
 }
 
+function showSavedStatus() {
+  setSaveStatus(fileChanged() ? 'Browser saved · File has changes' : 'Saved in this browser');
+}
+
 function saveNow() {
   clearTimeout(saveTimer);
   if (savingBlocked) return setSaveStatus('Saving paused — export your board', true);
   try {
     localStorage.setItem(storageKey, JSON.stringify(board));
-    setSaveStatus('Saved in this browser');
+    activeSession.board = board;
+    entryFor().name = board.name;
+    rememberWorkspace(); updateBoardFiles(); showSavedStatus();
   } catch {
     setSaveStatus('Could not save — please export', true);
     toast('Browser storage is unavailable or full. Export your board to keep it.');
@@ -90,6 +236,7 @@ function saveNow() {
 function saveSoon() {
   if (savingBlocked) return setSaveStatus('Saving paused — export your board', true);
   setSaveStatus('Saving…');
+  entryFor().name = board.name; updateBoardFiles();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveNow, 250);
 }
@@ -210,11 +357,12 @@ async function loadCategories() {
 }
 
 async function chooseCategories() {
-  if (typeof window.showOpenFilePicker !== 'function') return $('categories-file').click();
+  if (typeof window.showOpenFilePicker !== 'function') { categoryPickSession = activeSession; return $('categories-file').click(); }
   const revision = ++categoryRevision;
   categoryBusy = true; renderCategorySource();
   try {
     const [handle] = await window.showOpenFilePicker({id: 'cork-categories', multiple: false, types: [{description: 'Categories text file', accept: {'text/plain': ['.txt']}}], ...(categoryHandle ? {startIn: categoryHandle} : {})});
+    if (revision !== categoryRevision) return;
     const file = await handle.getFile();
     await useCategoryFile(file, handle, revision);
   } catch (error) {
@@ -324,9 +472,60 @@ function renderCategories() {
   }
 }
 
+function applyNoteStyle(element, style = {}, type = 'note') {
+  style ||= {};
+  for (const part of ['header', 'body']) {
+    const values = style[part] || {};
+    element.style.setProperty(`--${part}-font`, NOTE_FONTS[values.font] || NOTE_FONTS.sans);
+    for (const field of ['size', 'weight']) {
+      const key = `--${part}-${field}`;
+      if (values[field]) element.style.setProperty(key, `${values[field]}${field === 'size' ? 'px' : ''}`);
+      else element.style.removeProperty(key);
+    }
+    const height = `--${part}-line-height`;
+    if (values.size) element.style.setProperty(height, `${Math.max(part === 'body' ? (type === 'card' ? 24 : 23) : 0, values.size * (part === 'body' ? 1.6 : 1.35))}px`);
+    else element.style.removeProperty(height);
+  }
+}
+
+function renderTextControls() {
+  const count = selected.size, selectedOption = $('text-target').querySelector('[value=selected]');
+  selectedOption.disabled = !count; selectedOption.textContent = count ? `Selected notes (${count})` : 'Selected notes';
+  if (!count) textTarget = 'new';
+  $('text-target').value = textTarget;
+  const styles = textTarget === 'new' ? [board.noteStyle || {}] : selectedNotes().map(note => note.style || {});
+  for (const control of document.querySelectorAll('[data-text-part]')) {
+    const part = control.dataset.textPart, field = control.dataset.textField;
+    const values = new Set(styles.map(style => style[part]?.[field] ?? (field === 'font' ? 'sans' : '')));
+    const mixed = values.size > 1, value = mixed ? '' : [...values][0];
+    control.value = value;
+    control.classList.toggle('is-mixed', mixed);
+    control.title = mixed ? 'Mixed values; choose a value to apply to every selected note' : control.getAttribute('aria-label');
+    if (control.type === 'number') control.placeholder = mixed ? 'Mixed' : (part === 'header' ? '16' : '13');
+  }
+}
+
+function changeTextStyle(part, field, value) {
+  if (field === 'size' && value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 9 || Number(value) > 72)) return renderTextControls();
+  record();
+  const targets = textTarget === 'new' ? [board] : selectedNotes();
+  for (const target of targets) {
+    const key = textTarget === 'new' ? 'noteStyle' : 'style';
+    const style = normalizeNoteStyle(target[key]);
+    style[part] ||= {};
+    if (value === '') delete style[part][field];
+    else style[part][field] = field === 'font' ? value : Number(value);
+    target[key] = normalizeNoteStyle(style);
+    if (textTarget === 'selected') { const element = noteElements.get(target.id); applyNoteStyle(element, target.style, target.type); autosize(target, element); }
+  }
+  if (placement) applyNoteStyle($('placement-preview'), board.noteStyle, placement.type);
+  renderTextControls(); queueStrings(); saveNow();
+}
+
 function renderPalette() {
   $('palette').value = board.palette;
   $('theme').value = board.theme;
+  renderTextControls();
   document.body.dataset.theme = board.theme;
   const preview = $('palette-preview'); preview.replaceChildren();
   for (let i = 0; i < 9; i++) {
@@ -502,7 +701,11 @@ function updateSelection() {
   }
   const count = selected.size + selectedStrings.size;
   viewport.classList.toggle('has-multi-selection', count > 1);
-  $('selection-tools').hidden = !count || (!selectMode && count < 2);
+  $('selection-tools').hidden = !count;
+  const signature = [...selected].sort().join('|');
+  if (signature !== textSelection) { textTarget = selected.size ? 'selected' : 'new'; textSelection = signature; }
+  $('edit-text').hidden = !selected.size;
+  renderTextControls();
   const label = `${count} selected`;
   if ($('selection-count').textContent !== label) $('selection-count').textContent = label;
   updateBoardTip();
@@ -548,7 +751,7 @@ function autosize(note, element) {
   if (note.type === 'folder') return;
   if (note.type === 'image') {
     const caption = element.querySelector('.polaroid-caption');
-    let size = 16;
+    let size = note.style?.body?.size || 16;
     caption.style.fontSize = `${size}px`;
     while (caption.scrollHeight > caption.clientHeight + 1 && size > 8) caption.style.fontSize = `${--size}px`;
     return;
@@ -668,18 +871,24 @@ function getImageResource(id) {
 }
 
 function wireNoteMovement(element, note, handle) {
+  applyNoteStyle(element, note.style, note.type);
   if (note.type !== 'folder') {
-    // Stable variation: a paper's curl survives redraws, reloads and backups.
-    let seed = 2166136261;
-    for (const character of note.id) seed = Math.imul(seed ^ character.codePointAt(0), 16777619) >>> 0;
-    const size = note.type === 'image' ? 8 + seed % 5 : note.type === 'card' ? 11 + seed % 7 : 16 + seed % 9;
-    element.dataset.curl = seed & 1 ? 'left' : 'right';
-    element.style.setProperty('--curl-size', `${size}px`);
-    const curl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    curl.classList.add('paper-curl'); curl.setAttribute('viewBox', '0 0 24 24'); curl.setAttribute('aria-hidden', 'true');
-    const gradient = `curl-${seed}`;
-    curl.innerHTML = `<defs><linearGradient id="${gradient}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fffef8" stop-opacity=".95"/><stop offset=".48" stop-color="#fffef8" stop-opacity=".72"/><stop offset=".78" stop-color="#fffef8" stop-opacity=".28"/><stop offset="1" stop-color="#392718" stop-opacity=".2"/></linearGradient></defs><path d="M0 24 Q3 13 1 2 Q13 4 24 0 Z" fill="url(#${gradient})"/><path d="M1 2 Q13 4 24 0" fill="none" stroke="#fffef8" stroke-opacity=".65" stroke-width=".55"/>`;
-    element.append(curl);
+    const shadow = document.createElement('span'); shadow.className = 'paper-shadow';
+    const surface = document.createElement('span'); surface.className = 'paper-surface';
+    shadow.append(surface); element.append(shadow);
+    if (note.type !== 'card') {
+      // Stable variation: a paper's curl survives redraws, reloads and backups.
+      let seed = 2166136261;
+      for (const character of note.id) seed = Math.imul(seed ^ character.codePointAt(0), 16777619) >>> 0;
+      const size = note.type === 'image' ? 8 + seed % 5 : 16 + seed % 9;
+      element.dataset.curl = seed & 1 ? 'left' : 'right';
+      element.style.setProperty('--curl-size', `${size}px`);
+      const curl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      curl.classList.add('paper-curl'); curl.setAttribute('viewBox', '0 0 24 24'); curl.setAttribute('aria-hidden', 'true');
+      const gradient = `curl-${seed}`;
+      curl.innerHTML = `<defs><linearGradient id="${gradient}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fffef8" stop-opacity=".95"/><stop offset=".48" stop-color="#fffef8" stop-opacity=".72"/><stop offset=".78" stop-color="#fffef8" stop-opacity=".28"/><stop offset="1" stop-color="#392718" stop-opacity=".2"/></linearGradient></defs><path d="M0 24 Q3 13 1 2 Q13 4 24 0 Z" fill="url(#${gradient})"/><path d="M1 2 Q13 4 24 0" fill="none" stroke="#fffef8" stroke-opacity=".65" stroke-width=".55"/>`;
+      element.append(curl);
+    }
   }
   handle.addEventListener('keydown', event => {
     if (selectMode && (event.key === 'Enter' || event.key === ' ')) {
@@ -740,6 +949,7 @@ function pickFolderFallback(note = null) {
   const input = $('folder-file');
   if (!('webkitdirectory' in input)) return toast('This browser does not provide a folder picker. Try a current desktop browser.');
   folderPickTarget = note?.id || null;
+  folderPickSession = activeSession;
   input.value = '';
   input.click();
 }
@@ -757,12 +967,15 @@ function updateFolderLink(note, id, name) {
 
 async function openFolder(note) {
   if (typeof window.showDirectoryPicker !== 'function') return pickFolderFallback(note);
+  const target = activeSession;
   try {
     const previous = await loadFolder(note.folderId);
     const handle = await window.showDirectoryPicker({id: 'cork-folder', mode: 'read', ...(previous ? {startIn: previous} : {})});
+    if (target !== activeSession) return;
     if (previous && await handle.isSameEntry(previous)) return updateFolderLink(note, note.folderId, handle.name);
     const id = crypto.randomUUID();
     await putFolder(id, handle); folderHandles.set(id, Promise.resolve(handle));
+    if (target !== activeSession) return;
     updateFolderLink(note, id, handle.name);
   } catch (error) { if (error.name !== 'AbortError') toast(error.message || 'Could not open the system folder dialog.'); }
 }
@@ -837,18 +1050,23 @@ function buildNote(note, index) {
     actionButton('Duplicate note', 'copy', () => duplicateNote(note)),
     actionButton('Delete note', 'trash', () => removeNote(note.id)),
   );
-  const resize = document.createElement('button'); resize.className = 'note-resize';
-  resize.setAttribute('aria-label', 'Resize note width and height. Drag or use arrow keys.');
-  resize.title = 'Drag to change width and height; double-click for automatic sizing';
-  resize.addEventListener('dblclick', () => { record(); delete note.width; delete note.height; autosize(note, element); saveSoon(); });
-  resize.addEventListener('keydown', event => {
-    const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[event.key];
-    if (!direction) return;
-    event.preventDefault(); record();
-    const step = event.shiftKey ? 1 : 10;
-    if (direction[0]) note.width = Math.max(190, Math.min(800, element.offsetWidth + direction[0] * step));
-    if (direction[1]) note.height = Math.max(120, Math.min(2000, element.offsetHeight + direction[1] * step));
-    autosize(note, element); saveSoon();
+  const resizeCorners = ['left', 'right'].map(side => {
+    const resize = document.createElement('button'); resize.className = `note-resize note-resize-${side}`;
+    resize.dataset.side = side;
+    resize.setAttribute('aria-label', `Resize note from bottom ${side} corner. Drag or use arrow keys.`);
+    resize.title = 'Drag to resize; double-click for automatic sizing';
+    resize.addEventListener('dblclick', () => { record(); delete note.width; delete note.height; autosize(note, element); saveSoon(); });
+    resize.addEventListener('keydown', event => {
+      const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[event.key];
+      if (!direction) return;
+      event.preventDefault(); record();
+      const step = event.shiftKey ? 1 : 10;
+      const angle = note.tilt * Math.PI / 180, dx = direction[0] * step, dy = direction[1] * step;
+      Object.assign(note, resizePaper({...note, width: element.offsetWidth, height: element.offsetHeight}, dx * Math.cos(angle) - dy * Math.sin(angle), dx * Math.sin(angle) + dy * Math.cos(angle), side));
+      element.style.left = `${note.x}px`; element.style.top = `${note.y}px`;
+      autosize(note, element); saveSoon();
+    });
+    return resize;
   });
   const resizeHeight = document.createElement('button'); resizeHeight.className = 'note-resize-height';
   resizeHeight.setAttribute('aria-label', 'Resize note height. Drag or use up and down arrow keys.');
@@ -862,7 +1080,7 @@ function buildNote(note, index) {
     autosize(note, element); saveSoon();
   });
   wireNoteMovement(element, note, handle);
-  element.append(title, content, actions, resize, resizeHeight);
+  element.append(title, content, actions, ...resizeCorners, resizeHeight);
   noteElements.set(note.id, element);
   world.append(element);
   autosize(note, element);
@@ -898,7 +1116,7 @@ function setSidebar(open, remember = false) {
   if (!open && $('sidebar').contains(document.activeElement)) $('toggle-sidebar').focus({preventScroll: true});
   if (remember && !compactLayout.matches) {
     desktopSidebarOpen = open;
-    try { localStorage.setItem(`${storageKey}:sidebar`, open ? 'open' : 'closed'); } catch { /* UI preference is optional. */ }
+    try { localStorage.setItem(`${appKey}:sidebar`, open ? 'open' : 'closed'); } catch { /* UI preference is optional. */ }
   }
   requestAnimationFrame(() => {
     board.notes.forEach(note => autosize(note, noteElements.get(note.id)));
@@ -921,6 +1139,7 @@ function startPlacement(type, category = '', assetId = null, folderName = '') {
   $('preview-photo').hidden = type !== 'image';
   if (type === 'image') getImageResource(assetId).then(asset => { if (placement?.imageId === assetId) $('preview-photo').src = asset.previewUrl; });
   $('placement-preview').style.setProperty('--note-color', colorFor(category));
+  applyNoteStyle($('placement-preview'), board.noteStyle, type);
   $('preview-title').textContent = type === 'card' ? 'Notes' : type === 'image' ? '' : type === 'folder' ? folderName : category;
   $('preview-hint').textContent = matchMedia('(pointer:coarse)').matches ? 'Tap to pin it here' : 'Click to pin it here';
   $('placement-label').textContent = type === 'card' ? 'Choose a position for the index card' : type === 'image' ? 'Choose a position for the photo' : type === 'folder' ? 'Choose a position for the folder' : `Choose a position for “${category}”`;
@@ -948,7 +1167,7 @@ function placeNote(point) {
   if (!placement) return;
   record();
   const location = screenToWorld(point, board.view);
-  const note = {id: crypto.randomUUID(), type: placement.type, category: placement.category, title: placement.type === 'card' ? 'Notes' : placement.category, text: '', x: location.x, y: location.y, tilt: (Math.random() - .5) * 2.4};
+  const note = {id: crypto.randomUUID(), style: normalizeNoteStyle(board.noteStyle), type: placement.type, category: placement.category, title: placement.type === 'card' ? 'Notes' : placement.category, text: '', x: location.x, y: location.y, tilt: (Math.random() - .5) * 2.4};
   if (placement.type === 'image') { note.imageId = placement.imageId; note.title = placement.imageName || 'Photo'; }
   if (placement.type === 'folder') { note.folderId = placement.folderId; note.title = placement.folderName; }
   board.notes.push(note);
@@ -1113,7 +1332,7 @@ viewport.addEventListener('pointerdown', event => {
     const resizeHeight = event.target.closest('.note-resize-height');
     if (resize || resizeHeight) {
       setSelected(note.id);
-      gesture = {type: resize ? 'resize' : 'resize-height', pointerId: event.pointerId, start: point, note, element: noteElement, width: noteElement.offsetWidth, height: noteElement.offsetHeight, moved: false};
+      gesture = {type: resize ? 'resize' : 'resize-height', pointerId: event.pointerId, start: point, note, element: noteElement, width: noteElement.offsetWidth, height: noteElement.offsetHeight, x: note.x, y: note.y, tilt: note.tilt, side: resize?.dataset.side, moved: false};
     } else {
       if (!event.target.closest('.note-drag') && selected.size < 2) return;
       document.activeElement?.blur(); viewport.focus({preventScroll: true});
@@ -1184,8 +1403,10 @@ viewport.addEventListener('pointermove', event => {
     }
     queueStrings();
   } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
-    if (gesture.type === 'resize') gesture.note.width = Math.max(190, Math.min(800, gesture.width + dx / board.view.zoom));
-    gesture.note.height = Math.max(120, Math.min(2000, gesture.height + dy / board.view.zoom));
+    if (gesture.type === 'resize') {
+      Object.assign(gesture.note, resizePaper(gesture, dx / board.view.zoom, dy / board.view.zoom, gesture.side));
+      gesture.element.style.left = `${gesture.note.x}px`; gesture.element.style.top = `${gesture.note.y}px`;
+    } else gesture.note.height = Math.max(120, Math.min(2000, gesture.height + dy / board.view.zoom));
     gesture.element.classList.add('is-resizing'); autosize(gesture.note, gesture.element);
   }
 });
@@ -1229,7 +1450,7 @@ viewport.addEventListener('wheel', event => {
   const unit = event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? viewport.clientHeight : 1;
   // Clamp unusually large wheel ticks without losing high-resolution trackpad input.
   const delta = Math.max(-200, Math.min(200, event.deltaY * unit));
-  changeZoom(Math.exp(-delta * .0025), localPoint(event));
+  changeZoom(Math.exp(-delta * .0009), localPoint(event));
 }, {passive: false});
 
 $('category-search').addEventListener('input', renderCategories);
@@ -1237,13 +1458,17 @@ $('load-categories').addEventListener('click', chooseCategories);
 $('refresh-categories').addEventListener('click', () => refreshCategories());
 $('categories-file').addEventListener('change', async event => {
   const file = event.target.files[0]; event.target.value = '';
-  if (!file) return;
+  const target = categoryPickSession; categoryPickSession = null;
+  if (!file || target !== activeSession) return;
+  const revision = ++categoryRevision;
   categoryBusy = true; renderCategorySource();
-  try { await useCategoryFile(file); }
-  catch (error) { toast(error.message || 'Could not open the categories file.'); }
+  try { await useCategoryFile(file, null, revision); }
+  catch (error) { if (revision === categoryRevision) toast(error.message || 'Could not open the categories file.'); }
   finally {
-    categoryBusy = false; renderCategorySource();
-    if (!categoriesReady) loadCategories();
+    if (revision === categoryRevision) {
+      categoryBusy = false; renderCategorySource();
+      if (!categoriesReady) loadCategories();
+    }
   }
 });
 $('default-categories').addEventListener('click', () => {
@@ -1262,14 +1487,15 @@ $('download-categories').addEventListener('click', () => {
 });
 $('random-note').addEventListener('click', randomCategory);
 $('add-card').addEventListener('click', () => startPlacement('card'));
-$('add-image').addEventListener('click', () => $('image-file').click());
+$('add-image').addEventListener('click', () => { imagePickSession = activeSession; $('image-file').click(); });
 if (typeof window.showDirectoryPicker !== 'function') $('add-folder').title = 'Choose a folder. This browser asks you to select it again when opening a folder tile.';
 $('add-folder').addEventListener('click', async () => {
   if (typeof window.showDirectoryPicker !== 'function') return pickFolderFallback();
+  const target = activeSession;
   try {
     const handle = await window.showDirectoryPicker({id: 'cork-folder', mode: 'read'});
     const id = crypto.randomUUID(); await putFolder(id, handle); folderHandles.set(id, Promise.resolve(handle));
-    startPlacement('folder', '', id, handle.name);
+    if (target === activeSession) startPlacement('folder', '', id, handle.name);
   } catch (error) { if (error.name !== 'AbortError') toast(error.message || 'Could not select this folder.'); }
 });
 $('folder-file').addEventListener('change', event => {
@@ -1278,6 +1504,7 @@ $('folder-file').addEventListener('change', event => {
   const target = folderPickTarget; folderPickTarget = null;
   // Use only the root folder's name; do not read or retain any selected files.
   input.value = '';
+  if (folderPickSession !== activeSession) return;
   if (!name) return toast('Choose one folder containing at least one file.');
   if (target) {
     const note = board.notes.find(item => item.id === target && item.type === 'folder');
@@ -1293,12 +1520,14 @@ $('add-string').addEventListener('click', () => {
 });
 $('image-file').addEventListener('change', async event => {
   const file = event.target.files[0]; event.target.value = '';
-  if (!file) return;
+  const target = imagePickSession; imagePickSession = null;
+  if (!file || target !== activeSession) return;
   $('add-image').disabled = true;
   try {
     const asset = await prepareImage(file);
     await putImage(asset);
     await getImageResource(asset.id);
+    if (target !== activeSession) return;
     startPlacement('image', '', asset.id);
     placement.imageName = asset.name;
   } catch (error) { toast(error.message || 'Could not add this image.'); }
@@ -1308,6 +1537,19 @@ $('cancel-placement').addEventListener('click', cancelPlacement);
 $('retry-categories').addEventListener('click', loadDefaultCategories);
 $('palette').addEventListener('change', () => { record(); board.palette = $('palette').value; renderCategories(); renderPalette(); updateNoteColors(); saveNow(); });
 $('theme').addEventListener('change', () => { record(); board.theme = $('theme').value; renderPalette(); saveNow(); });
+$('text-target').addEventListener('change', () => { textTarget = $('text-target').value; renderTextControls(); });
+for (const control of document.querySelectorAll('[data-text-part]')) {
+  control.addEventListener('change', () => changeTextStyle(control.dataset.textPart, control.dataset.textField, control.value));
+}
+$('reset-text-style').addEventListener('click', () => {
+  record();
+  if (textTarget === 'new') delete board.noteStyle;
+  else for (const note of selectedNotes()) { delete note.style; applyNoteStyle(noteElements.get(note.id), null, note.type); autosize(note, noteElements.get(note.id)); }
+  renderTextControls(); queueStrings(); saveNow();
+});
+$('edit-text').addEventListener('click', () => {
+  textTarget = 'selected'; setSidebar(true); $('text-settings').open = true; renderTextControls();
+});
 $('board-name').addEventListener('focus', record);
 $('board-name').addEventListener('input', () => { board.name = $('board-name').value; saveSoon(); });
 $('board-name').addEventListener('blur', () => { if (!board.name.trim()) { board.name = 'My board'; $('board-name').value = board.name; saveSoon(); } });
@@ -1356,8 +1598,8 @@ $('export-board').addEventListener('click', async () => {
 });
 $('export-pdf').addEventListener('click', async () => {
   closeMenu();
-  if (pdfExporting || !board.notes.length) return;
-  pdfExporting = true;
+  if (pdfExporting || openingBoard || !board.notes.length) return;
+  pdfExporting = true; updateBoardFiles();
   $('export-pdf').disabled = true;
   $('export-pdf').setAttribute('aria-busy', 'true');
   toast('Preparing PDF…');
@@ -1381,41 +1623,132 @@ $('export-pdf').addEventListener('click', async () => {
     console.error('Cork could not export the PDF:', error);
     toast('Couldn’t create the PDF. Your board is safe; please try again.');
   } finally {
-    pdfExporting = false;
+    pdfExporting = false; updateBoardFiles();
     $('export-pdf').removeAttribute('aria-busy');
     updateCounts();
   }
 });
-$('import-board').addEventListener('click', () => { closeMenu(); $('import-file').click(); });
-$('import-file').addEventListener('change', async event => {
-  const file = event.target.files[0]; event.target.value = '';
-  if (!file) return;
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url; link.download = name;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+async function boardBlob(snapshot) {
+  const images = await exportImages(snapshot.notes);
+  return new Blob([JSON.stringify({...snapshot, images, exportedAt: new Date().toISOString()}, null, 2)], {type: 'application/json'});
+}
+
+async function matchingBoard(handle, exceptId = null) {
+  for (const entry of workspace.boards) {
+    if (entry.id === exceptId || !entry.file) continue;
+    const session = getSession(entry.id);
+    await restoreBoardHandle(session);
+    try { if (session.handle && await handle.isSameEntry(session.handle)) return entry; }
+    catch { /* A removed or inaccessible file does not match. */ }
+  }
+  return null;
+}
+
+async function openBoardFile(file, handle = null) {
+  if (workspaceBlocked) return toast('Reload Cork before changing board tabs. The saved tabs have been left untouched.');
+  if (handle) {
+    const existing = await matchingBoard(handle);
+    if (existing) { switchBoard(existing.id); return toast('Using the remembered board tab.'); }
+  }
+  const loaded = await readBoardFile(file);
+  const assets = await importImages(loaded.data, loaded.board);
+  for (const asset of assets) await putImage(asset);
+  const id = crypto.randomUUID(), keys = boardKeys(appKey, id);
+  const entry = {id, name: loaded.board.name, open: true, file: {
+    name: file.name, token: crypto.randomUUID(), stamp: boardStamp(loaded.board), modified: file.lastModified, size: file.size,
+  }};
+  localStorage.setItem(keys.board, JSON.stringify(loaded.board));
+  const session = {id, board: loaded.board, undo: [], redo: [], blocked: false, handle, handleReady: true};
+  sessions.set(id, session); workspace.boards.push(entry);
+  switchBoard(id); saveNow();
+  if (handle) {
+    try { await putCategoryHandle(keys.file, {token: entry.file.token, handle}); }
+    catch { toast('Board opened. The file link could not be remembered; use Save as next time.'); }
+  }
+}
+
+async function chooseBoardFiles() {
+  closeMenu();
+  if (openingBoard || workspaceBlocked || pdfExporting) return;
+  if (typeof window.showOpenFilePicker !== 'function') return $('import-file').click();
+  openingBoard = true; updateBoardFiles();
   try {
-    if (file.size > 100 * 1024 * 1024) throw new Error('Choose a board file smaller than 100 MB.');
-    const data = JSON.parse(await file.text());
-    pendingImport = validateBoard(data);
-    pendingImages = await importImages(data, pendingImport);
-    $('import-summary').textContent = `“${pendingImport.name}” contains ${pendingImport.notes.length} ${pendingImport.notes.length === 1 ? 'note' : 'notes'}.`;
-    $('import-dialog').showModal();
-  } catch (error) { pendingImport = null; pendingImages = []; toast(error instanceof SyntaxError ? 'That file isn’t a valid Cork JSON export. Nothing was changed.' : error.message); }
+    const handles = await window.showOpenFilePicker({id: 'cork-boards', multiple: true, types: [{description: 'Cork board', accept: {'application/json': ['.json']}}]});
+    for (const handle of handles) await openBoardFile(await handle.getFile(), handle);
+  } catch (error) { if (error.name !== 'AbortError') toast(error.message || 'Could not open this board file.'); }
+  finally { openingBoard = false; updateBoardFiles(); }
+}
+
+async function saveBoardFile(saveAs = false) {
+  const session = activeSession, entry = entryFor(session);
+  if (fileTasks.has(session.id) || !session.handleReady) return;
+  session.board = board;
+  const snapshot = validateBoard(JSON.parse(JSON.stringify(board)));
+  const filename = entry.file?.name || `${snapshot.name.replace(/[^a-z0-9 _-]/gi, '').trim() || 'cork-board'}.json`;
+  const previous = entry.file;
+  let handle = saveAs ? null : session.handle;
+  fileTasks.add(session.id); closeMenu(); updateBoardFiles();
+  try {
+    // Pick/request access before preparing images, while the click is still active.
+    if (!handle && typeof window.showSaveFilePicker === 'function') {
+      handle = await window.showSaveFilePicker({id: 'cork-boards', suggestedName: filename, types: [{description: 'Cork board', accept: {'application/json': ['.json']}}]});
+    } else if (handle && await handle.requestPermission({mode: 'readwrite'}) !== 'granted') {
+      throw new Error('File access was not granted. Your board is still saved in this browser.');
+    }
+    if (handle) {
+      const other = await matchingBoard(handle, session.id);
+      if (other) throw new Error('That file belongs to another board tab. Choose a different file with Save as.');
+    }
+    const blob = await boardBlob(snapshot);
+    let saved;
+    if (handle) {
+      const same = session.handle && await handle.isSameEntry(session.handle);
+      saved = await writeBoardFile(handle, blob, same ? previous : null);
+    } else {
+      downloadBlob(blob, filename);
+      saved = {name: filename, modified: 0, size: blob.size};
+    }
+    entry.file = {...saved, token: crypto.randomUUID(), stamp: boardStamp(snapshot)};
+    session.handle = handle;
+    rememberWorkspace();
+    try { await putCategoryHandle(boardKeys(appKey, session.id).file, handle ? {token: entry.file.token, handle} : null); }
+    catch { if (handle) toast('File saved. The link could not be remembered; use Save as next time.'); }
+    if (session === activeSession) { saveNow(); toast(handle ? `Saved ${saved.name}.` : 'Board downloaded. This browser saves changes as a new download.'); }
+  } catch (error) {
+    if (error.name !== 'AbortError') toast(error.message || 'Could not save the board file.');
+  } finally { fileTasks.delete(session.id); updateBoardFiles(); }
+}
+
+$('new-board').addEventListener('click', newBoard);
+$('open-board').addEventListener('click', chooseBoardFiles);
+$('save-board').addEventListener('click', () => saveBoardFile());
+$('save-board-as').addEventListener('click', () => saveBoardFile(true));
+$('board-tabs').addEventListener('keydown', event => {
+  const tabs = [...$('board-tabs').querySelectorAll('[role=tab]')];
+  const index = tabs.indexOf(event.target);
+  if (index < 0 || !['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + tabs.length) % tabs.length;
+  const id = tabs[next].dataset.boardId; switchBoard(id); $(`tab-${id}`).focus();
 });
-$('cancel-import').addEventListener('click', () => { pendingImport = null; pendingImages = []; $('import-dialog').close(); });
-$('import-dialog').addEventListener('cancel', event => { if ($('confirm-import').disabled) { event.preventDefault(); return; } pendingImport = null; pendingImages = []; });
-$('confirm-import').addEventListener('click', async () => {
-  if (!pendingImport) return;
-  $('confirm-import').disabled = true;
-  $('cancel-import').disabled = true;
-  try {
-  for (const asset of pendingImages) await putImage(asset);
-  cancelGesture(); record(); setStringMode(false); cancelPlacement(); board = pendingImport; pendingImport = null;
-  pendingImages = [];
-  $('import-dialog').close(); setSelected(null); renderBoard();
-  saveNow(); toast('Board imported.', true);
-  } catch (error) { toast(error.message); }
-  finally { $('confirm-import').disabled = false; $('cancel-import').disabled = false; }
+$('import-file').addEventListener('change', async event => {
+  const files = [...event.target.files]; event.target.value = '';
+  if (!files.length || openingBoard) return;
+  openingBoard = true; updateBoardFiles();
+  try { for (const file of files) await openBoardFile(file); }
+  catch (error) { toast(error.message || 'Could not open this board file.'); }
+  finally { openingBoard = false; updateBoardFiles(); }
 });
 
 document.addEventListener('keydown', event => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !document.querySelector('dialog[open]')) { event.preventDefault(); saveBoardFile(event.shiftKey); return; }
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
   if (event.key === 'Escape') { cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
@@ -1442,7 +1775,14 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.addEventListener('focus', checkCategoryFile);
 window.addEventListener('storage', event => {
   if (event.key === categoriesKey) { loadCategories(); return; }
-  if (event.key !== storageKey || !event.newValue) return;
+  if (event.key === `${appKey}:workspace`) {
+    workspaceBlocked = true; updateBoardFiles();
+    toast('Board tabs changed in another browser tab. Reload to use the updated tab list.');
+    return;
+  }
+  if (!event.newValue) return;
+  for (const session of sessions.values()) if (event.key === boardKeys(appKey, session.id).board) session.blocked = true;
+  if (event.key !== storageKey) return;
   clearTimeout(saveTimer); savingBlocked = true;
   setSaveStatus('Changed in another tab — saving paused', true);
   toast('This board changed in another tab. Export this copy if needed, then reload to use the latest saved board.');
@@ -1461,7 +1801,9 @@ window.visualViewport?.addEventListener('resize', updateVisibleHeight);
 window.visualViewport?.addEventListener('scroll', updateVisibleHeight);
 
 renderBoard();
+entryFor().name = board.name;
+renderBoardTabs(); updateHistory(); rememberWorkspace(); restoreBoardHandle(activeSession);
 setSidebar(!compactLayout.matches && desktopSidebarOpen);
 updateVisibleHeight();
 loadCategories();
-if (startupProblem) { setSaveStatus('Saved board unavailable — saving paused', true); toast(startupProblem); }
+if (startupProblem || activeSession.problem) { setSaveStatus('Saved board unavailable — saving paused', true); toast(startupProblem || activeSession.problem); }

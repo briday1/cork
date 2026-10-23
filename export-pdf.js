@@ -25,6 +25,7 @@ export function snapshotNotes(notes, elements) {
       width: `${width}px`, height: `${height}px`, maxWidth: 'none',
       boxShadow: 'none', outline: 'none', transition: 'none', margin: '0',
     });
+    clone.querySelectorAll('.paper-shadow').forEach(part => { part.style.filter = 'none'; });
     clone.querySelectorAll('.folder-face, .folder-tab').forEach(part => { part.style.boxShadow = 'none'; });
     const pin = clone.querySelector('.pin');
     if (pin) pin.style.opacity = '1';

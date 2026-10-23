@@ -83,6 +83,25 @@ export function blankBoard() {
   return {version: 1, name: 'My board', palette: 'hsv', theme: 'natural', notes: [], connections: [], view: {x: 0, y: 0, zoom: 1}};
 }
 
+export const NOTE_FONTS = {
+  sans: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+  serif: 'Georgia,"Times New Roman",serif',
+  mono: 'ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace',
+};
+
+export function normalizeNoteStyle(value) {
+  const style = {};
+  for (const part of ['header', 'body']) {
+    const source = value?.[part], result = {};
+    if (!source || typeof source !== 'object') continue;
+    if (Object.hasOwn(NOTE_FONTS, source.font)) result.font = source.font;
+    if (Number.isFinite(source.size)) result.size = Math.max(9, Math.min(72, source.size));
+    if ([400, 500, 550, 600, 650, 700].includes(source.weight)) result.weight = source.weight;
+    if (Object.keys(result).length) style[part] = result;
+  }
+  return style;
+}
+
 export function screenToWorld(point, view) {
   return {x: (point.x - view.x) / view.zoom, y: (point.y - view.y) / view.zoom};
 }
@@ -122,7 +141,8 @@ export function validateBoard(data) {
     if (n.type === 'image' && (typeof n.imageId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.imageId) || n.text.length > 120)) throw new Error('This board contains an invalid Polaroid. Captions can contain up to 120 characters. Nothing was changed.');
     if (n.type === 'folder' && (typeof n.folderId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.folderId) || !n.title || n.title.length > 255)) throw new Error('This board contains an invalid folder link. Nothing was changed.');
     ids.add(n.id);
-    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
+    const style = normalizeNoteStyle(n.style);
+    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(Object.keys(style).length ? {style} : {}), ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
       ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {}),
       ...(finite(n.height) ? {height: Math.max(120, Math.min(2000, n.height))} : {}),
     })};
@@ -142,6 +162,7 @@ export function validateBoard(data) {
     name: typeof data.name === 'string' ? data.name.slice(0, 80) || 'My board' : 'My board',
     palette: Object.hasOwn(PALETTES, data.palette) ? data.palette : 'hsv',
     theme: ['natural', 'pale', 'dark'].includes(data.theme) ? data.theme : 'natural',
+    ...(Object.keys(normalizeNoteStyle(data.noteStyle)).length ? {noteStyle: normalizeNoteStyle(data.noteStyle)} : {}),
     notes,
     connections,
     view: view && finite(view.x) && finite(view.y) && finite(view.zoom) && view.zoom >= .25 && view.zoom <= 2 ? {x: view.x, y: view.y, zoom: view.zoom} : {x: 0, y: 0, zoom: 1},

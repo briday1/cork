@@ -15,7 +15,7 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 3. Type in the note. It grows vertically as you write, and longer lines can widen it. The text is plain text; the list button adds bullets and Enter continues bulleted or numbered lists. Press Enter on an empty bullet to finish the list.
 4. Grab a note by its **top edge** to move it anywhere. You can also focus that edge with Tab and move it with the arrow keys; hold Shift for one-pixel adjustments.
 
-**Index card** places a larger, lined card with its own editable title and no category. Both notes and index cards expand with their content. Drag the bottom grip up or down to make a note or card shorter or taller. Drag the bottom-right corner to resize width and height together. Written content always stays visible. Double-click the bottom grip to restore automatic height, or the corner to restore automatic sizing. With a grip focused, use the arrow keys to resize; hold Shift for one-pixel adjustments.
+**Index card** places a larger, lined card with its own editable title and no category. Both notes and index cards expand with their content. Drag the bottom grip up or down to make a note or card shorter or taller. Drag either lower corner to resize width and height together. The opposite upper corner stays anchored, including on tilted paper. Resize areas have no printed line marks. Written content always stays visible. Double-click the bottom grip to restore automatic height, or either corner to restore automatic sizing. With a grip focused, use the arrow keys to resize; hold Shift for one-pixel adjustments.
 
 **Select multiple items:** Shift-click to add or remove notes, cards, photos, folders, or strings from the selection. The **Select tool** beside the hand tool also lets you click to toggle items or drag a box across the cork. Hold Shift while drawing another box to add to the selection. Drag a selected item in Select mode, or its top edge in normal mode, to move the selected papers together; strings follow their pins. Arrow keys on a selected item’s move handle move the whole group. Use **Delete selected elements** (or Delete/Backspace) to remove the selection and any attached strings in one undoable change. **Clear selection** clears the group; Escape also exits Select mode. Hold Space to pan temporarily without losing your selection.
 
@@ -33,9 +33,9 @@ Photos and folders keep a visible thumbtack even without a connection.
 
 In the sidebar’s **⋯** menu, **Export PDF** downloads one page cropped closely around all board items, including items outside the current view. It preserves their arrangement and rotation, uses lossless 4× rendering (384 dpi at original size), and leaves out cork, controls, selection outlines, and shadows. The page has no background fill; most PDF viewers display it as white. Paper colors and photo frames remain. Very large individual notes use a lower capture scale to respect browser canvas limits. The PDF is image-based, so text is not selectable.
 
-Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
+Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key, with small wheel increments for finer adjustment. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
 
-Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for export/import and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
+Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for file saving, exports, recently closed boards, and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
 
 ![An empty board with the sidebar collapsed](./docs/cork-full-board.jpg)
 
@@ -50,6 +50,8 @@ Shortcuts do not fire while you type in a text field.
 | `/` | Search categories |
 | `V` | Toggle the Select tool |
 | `Shift` + click | Add or remove an element from the selection |
+| `Ctrl/Cmd+S` | Save the active board file |
+| `Ctrl/Cmd+Shift+S` | Save the active board to another file |
 | `Ctrl/Cmd+A` | Select every paper item when not editing text |
 | `Enter` | Pin an attached note at the preview position |
 | `Escape` | Clear selection, exit Select mode, cancel placement, or close a menu |
@@ -57,6 +59,20 @@ Shortcuts do not fire while you type in a text field.
 | `Delete` / `Backspace` | Delete the selected elements when not editing text |
 | `Ctrl/Cmd+Z` | Undo a board change when not editing text |
 | `Ctrl/Cmd+Shift+Z` or `Ctrl/Cmd+Y` | Redo a board change |
+
+## Board tabs and local files
+
+Use **+** beside **Boards** for a new board, or the folder button to open one or more board `.json` files. The tabs stay in the left sidebar. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
+
+**Save** (Ctrl/Cmd+S) chooses a local board file the first time, then writes to that file. **⋯ → Save as…** (Ctrl/Cmd+Shift+S) chooses another file. File links are remembered where the browser supports them; it may ask for access again. A small dot on a tab and “File has changes” mean the browser copy is ahead of the saved file. Browser saving continues automatically; file writes happen when you use Save. If a file has changed outside Cork, Save asks you to use Save as to preserve both copies. Browsers without local file writing download the board instead and remember the filename.
+
+Load a categories `.txt` file independently for each tab, or keep the repository default. Two boards can deliberately use the same categories file. Opening a board file that is already linked brings its existing tab forward. Close a tab with its ×; its cached board and file pair remain available under **⋯ → Recently closed**. Closing a tab does not delete a local file. For a portable setup, keep each board `.json` together with its categories `.txt`; choose that pair once in a new browser.
+
+## Text style
+
+Open **Text style** in the sidebar. Choose **New notes** to set defaults, or **Selected notes** to change one note or a group. The **Text** button beside the selection controls opens the same settings. Heading and body have separate **Sans**, **Serif**, or **Mono** fonts, sizes, and weights. Changing one setting leaves the other settings alone. Blank size fields use the usual size for that type of paper; clear a size to restore it. **Reset** restores the standard style for the chosen target. Mixed selections keep their differences until you change that field.
+
+Defaults are copied into newly placed notes, cards, photos, and folder labels; existing items keep their own style. Group formatting is one undoable change. Text style saves in each board file and appears in PDF exports. A Polaroid caption still shrinks when necessary to fit its fixed footer.
 
 ## Use your own categories
 
@@ -76,7 +92,7 @@ Prefix a line with `*` (with or without a space) to put that category in **Frequ
 
 The browser remembers a copy of your loaded list across visits. Where the browser supports linking local files, Cork also remembers the file handle and checks for edits on startup and when you return to the tab. If file permission expires, the saved list keeps working; **Refresh** lets you allow access again. In other browsers, **Reload file…** asks you to select the edited file again. You do not need to reload an unchanged list on every visit. **Use default** switches back to the repository list without changing your notes. Your local file is only read, never overwritten or uploaded. Clearing this site’s browser data removes the saved copy and file link.
 
-Keep two files for a portable setup: your **categories `.txt`** (usually changed rarely) and your **board `.json`** from Export board. The board contains the notes and original images; the categories file is separate. When moving to another browser or device, import the board and load your categories once. A selected categories file is limited to 1 MB.
+Keep two files for a portable setup: your **categories `.txt`** (usually changed rarely) and your **board `.json`** from Save or Download board copy. The board contains the notes and original images; the categories file is separate. When moving to another browser or device, open the board and load its categories once. A selected categories file is limited to 1 MB.
 
 Leading/trailing spaces and empty lines are ignored. Duplicate names are removed without regard to case. `#` is ordinary category text, not a comment marker. Existing notes keep their category names and content even when you remove or rename a category in the file. A small sidebar notice flags categories used on the board but absent from the file. They appear under **Also on this board** and still work for new notes, searching, Random category, saving, and export. Names are compared without regard to case; cards, photos, and folders do not count as missing categories. Removing a category does **not** delete its notes.
 
@@ -86,11 +102,11 @@ No category count is hard-coded. Maintainers can still edit the repository list 
 
 ## Appearance and color maps
 
-The board uses a bundled photograph of real cork. The grain moves and scales with the notes as you pan and zoom, and mirrored photo edges keep the surface continuous. Board items cast soft shadows. Notes, index cards, and Polaroids have a small lifted lower corner, with a varied side and size that stays consistent across visits and board backups. Cards and photos curl less than sticky notes. Selected items use a bright, thick cyan outline. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. PDF export keeps the paper detail and omits board shadows. Asset source and license are in [assets/README.md](./assets/README.md).
+The board uses a bundled photograph of real cork. The grain moves and scales with the notes as you pan and zoom, and mirrored photo edges keep the surface continuous. Board items cast soft shadows. Sticky notes and Polaroids have a small lifted lower corner, with a varied side and size that stays consistent across visits and board backups. Photos curl less than sticky notes. The cut-away corner shows the cork through it, and the shadow follows the paper shape. Index cards stay flat. Selected items use a bright, thick cyan outline. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. PDF export keeps the paper detail and omits board shadows. Asset source and license are in [assets/README.md](./assets/README.md).
 
-![Soft shadows and small, varied corner curls on sticky notes and an index card.](./docs/cork-paper.jpg)
+![Soft shadows and small corner curls on sticky notes, beside a flat index card.](./docs/cork-paper.jpg)
 
-At the bottom of the sidebar, choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
+Open **Appearance** at the bottom of the sidebar to choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
 
 | Color map | Character |
 | --- | --- |
@@ -110,7 +126,7 @@ The board automatically saves notes, positions, widths, heights, theme, color ma
 
 - Notes are **not** written back into the repository and are **not** shared with other visitors or other devices.
 - Clearing site data, private-browsing cleanup, or moving to another browser/origin can remove or separate the saved board.
-- Use the sidebar’s **⋯ → Export board** for a JSON backup including original images. **Import board** validates the file and asks before replacing the current board. Import is undoable in the current session. Folder handles are specific to a browser/device and are reconnected with the system picker when necessary.
+- Use **Save** or the sidebar’s **⋯ → Download board copy** for a JSON backup including original images. **Open board files** validates each file and opens it in a separate tab. Existing boards stay open. Folder handles are specific to a browser/device and are reconnected with the system picker when necessary.
 - If another tab changes the same board, this tab pauses saving to avoid overwriting it. Export this tab’s copy if needed, then reload to use the saved board.
 - A damaged stored board is left untouched and automatic saving pauses. Recover the original storage before intentionally clearing the damaged copy.
 
