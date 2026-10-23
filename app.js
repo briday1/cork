@@ -493,24 +493,34 @@ function renderTextControls() {
   selectedOption.disabled = !count; selectedOption.textContent = count ? `Selected notes (${count})` : 'Selected notes';
   if (!count) textTarget = 'new';
   $('text-target').value = textTarget;
-  const styles = textTarget === 'new' ? [board.noteStyle || {}] : selectedNotes().map(note => note.style || {});
+  const notes = selectedNotes();
+  const styles = textTarget === 'new' ? [board.noteStyle || {}] : notes.map(note => note.style || {});
   for (const control of document.querySelectorAll('[data-text-part]')) {
     const part = control.dataset.textPart, field = control.dataset.textField;
-    const values = new Set(styles.map(style => style[part]?.[field] ?? (field === 'font' ? 'sans' : '')));
+    const values = new Set(styles.map((style, index) => {
+      if (style[part]?.[field] !== undefined) return style[part][field];
+      if (field === 'font') return 'sans';
+      if (textTarget === 'new') return '';
+      const type = notes[index].type;
+      if (field === 'size') return part === 'header' ? (type === 'card' ? 19 : 16) : type === 'image' ? 16 : 13;
+      return part === 'header' ? (type === 'card' ? 550 : type === 'folder' ? 600 : 650) : type === 'image' ? 550 : 400;
+    }));
     const mixed = values.size > 1, value = mixed ? '' : [...values][0];
     control.value = value;
     control.classList.toggle('is-mixed', mixed);
     control.title = mixed ? 'Mixed values; choose a value to apply to every selected note' : control.getAttribute('aria-label');
-    if (control.type === 'number') control.placeholder = mixed ? 'Mixed' : (part === 'header' ? '16' : '13');
+    if (control.type === 'number') control.placeholder = mixed ? 'Mixed' : 'Auto';
   }
 }
 
-function changeTextStyle(part, field, value) {
-  if (field === 'size' && value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 9 || Number(value) > 72)) return renderTextControls();
-  record();
+function changeTextStyle(part, field, value, recordChange = true) {
+  if (field === 'size' && value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 9 || Number(value) > 72)) return false;
   const targets = textTarget === 'new' ? [board] : selectedNotes();
+  const key = textTarget === 'new' ? 'noteStyle' : 'style';
+  const desired = value === '' ? undefined : field === 'font' ? value : Number(value);
+  if (!targets.some(target => target[key]?.[part]?.[field] !== desired)) return false;
+  if (recordChange) record();
   for (const target of targets) {
-    const key = textTarget === 'new' ? 'noteStyle' : 'style';
     const style = normalizeNoteStyle(target[key]);
     style[part] ||= {};
     if (value === '') delete style[part][field];
@@ -520,6 +530,7 @@ function changeTextStyle(part, field, value) {
   }
   if (placement) applyNoteStyle($('placement-preview'), board.noteStyle, placement.type);
   renderTextControls(); queueStrings(); saveNow();
+  return true;
 }
 
 function renderPalette() {
@@ -1539,7 +1550,16 @@ $('palette').addEventListener('change', () => { record(); board.palette = $('pal
 $('theme').addEventListener('change', () => { record(); board.theme = $('theme').value; renderPalette(); saveNow(); });
 $('text-target').addEventListener('change', () => { textTarget = $('text-target').value; renderTextControls(); });
 for (const control of document.querySelectorAll('[data-text-part]')) {
-  control.addEventListener('change', () => changeTextStyle(control.dataset.textPart, control.dataset.textField, control.value));
+  let recorded = false;
+  control.addEventListener('focus', () => { recorded = false; });
+  const apply = () => {
+    if (changeTextStyle(control.dataset.textPart, control.dataset.textField, control.value, !recorded)) recorded = true;
+  };
+  control.addEventListener('change', apply);
+  if (control.type === 'number') {
+    control.addEventListener('input', () => { if (control.value !== '') apply(); });
+    control.addEventListener('blur', renderTextControls);
+  }
 }
 $('reset-text-style').addEventListener('click', () => {
   record();
