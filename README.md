@@ -19,6 +19,8 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 **Select multiple items:** Shift-click to add or remove notes, cards, photos, folders, or strings from the selection. The **Select tool** beside the hand tool also lets you click to toggle items or drag a box across the cork. Hold Shift while drawing another box to add to the selection. Drag a selected item in Select mode, or its top edge in normal mode, to move the selected papers together; strings follow their pins. Arrow keys on a selected item’s move handle move the whole group. Use **Delete selected elements** (or Delete/Backspace) to remove the selection and any attached strings in one undoable change. **Clear selection** clears the group; Escape also exits Select mode. Hold Space to pan temporarily without losing your selection.
 
+![Three board elements selected together, with group controls and the Select tool active.](./docs/cork-selection.jpg)
+
 Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Random category** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
 
 **Images**, beside **Index card**, opens an image file picker. Choose a file, then click the board to place a fixed 286 × 348 Polaroid. Write a caption of up to 120 characters underneath; captions use the same larger font as note headings and fit within the footer. Click the photo to open the full original in a new tab. Move the Polaroid by its top edge. The image is cropped to a square inside the frame; the original remains intact. PNG, JPEG, WebP, GIF, and AVIF originals are retained; other browser-readable formats are flattened to PNG.
