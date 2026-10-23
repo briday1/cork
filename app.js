@@ -98,7 +98,11 @@ function fileChanged(session = activeSession) {
 
 function renderBoardTabs() {
   const list = $('board-tabs'); list.replaceChildren();
-  $('boards-section').hidden = workspace.boards.filter(item => item.open).length < 2;
+  const openCount = workspace.boards.filter(item => item.open).length;
+  $('boards-section').hidden = openCount < 2 && workspace.boards.length < 4;
+  $('board-tabs').hidden = openCount < 2;
+  $('all-boards-button').hidden = workspace.boards.length < 4;
+  $('board-total').textContent = workspace.boards.length;
   for (const entry of workspace.boards.filter(item => item.open)) {
     const row = document.createElement('div'); row.className = 'board-tab-row';
     const tab = document.createElement('button'); tab.className = 'board-tab'; tab.id = `tab-${entry.id}`;
@@ -123,6 +127,27 @@ function renderBoardTabs() {
   $('recent-boards').hidden = !closed.childElementCount;
   updateBoardFiles();
   requestAnimationFrame(() => $('board-tabs').querySelector('[aria-selected=true]')?.scrollIntoView?.({block: 'nearest', inline: 'nearest'}));
+}
+
+function renderAllBoards() {
+  const list = $('all-boards-list'), query = $('board-search').value.trim().toLocaleLowerCase();
+  list.replaceChildren();
+  for (const entry of workspace.boards.filter(entry => `${entry.name} ${entry.file?.name || ''}`.toLocaleLowerCase().includes(query))) {
+    const button = document.createElement('button'); button.className = 'board-list-entry';
+    button.setAttribute('aria-current', String(entry.id === workspace.activeId));
+    button.title = entry.file?.name || 'Saved in this browser';
+    const name = document.createElement('span'); name.textContent = entry.name || 'My board';
+    button.append(name);
+    if (!entry.open) { const closed = document.createElement('small'); closed.textContent = 'Closed'; button.append(closed); }
+    button.addEventListener('click', () => { entry.open = true; switchBoard(entry.id); closeAllBoards(); });
+    list.append(button);
+  }
+  if (!list.childElementCount) { const empty = document.createElement('p'); empty.textContent = 'No matching boards.'; list.append(empty); }
+}
+
+function closeAllBoards() {
+  $('all-boards-menu').hidden = true;
+  $('all-boards-button').setAttribute('aria-expanded', 'false');
 }
 
 function updateBoardFiles() {
@@ -161,6 +186,7 @@ async function restoreBoardHandle(session) {
 }
 
 function switchBoard(id) {
+  closeAllBoards();
   if (id === activeSession.id) { entryFor().open = true; renderBoardTabs(); rememberWorkspace(); return; }
   if (pdfExporting) return toast('Finish the PDF export before switching boards.');
   document.activeElement?.blur(); cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false);
@@ -513,6 +539,7 @@ function renderCategories() {
 function applyInterfaceTheme() {
   const theme = uiThemePreference === 'system' ? (systemAppearance.matches ? 'dark' : 'light') : uiThemePreference;
   document.body.dataset.uiTheme = theme;
+  document.documentElement.style.colorScheme = theme;
   $('ui-theme').value = uiThemePreference;
   document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#242520' : '#f2efe6';
 }
@@ -1809,6 +1836,13 @@ async function saveBoardFile(saveAs = false) {
 
 $('new-board').addEventListener('click', newBoard);
 $('duplicate-board').addEventListener('click', duplicateBoard);
+$('all-boards-button').addEventListener('click', () => {
+  const open = $('all-boards-menu').hidden;
+  $('all-boards-menu').hidden = !open; $('all-boards-button').setAttribute('aria-expanded', String(open));
+  if (open) { closeMenu(); $('board-search').value = ''; renderAllBoards(); $('board-search').focus(); }
+});
+$('board-search').addEventListener('input', renderAllBoards);
+document.addEventListener('click', event => { if (!event.target.closest('#boards-section')) closeAllBoards(); });
 $('open-board').addEventListener('click', chooseBoardFiles);
 $('save-board').addEventListener('click', () => saveBoardFile());
 $('save-board-as').addEventListener('click', () => saveBoardFile(true));
@@ -1832,7 +1866,7 @@ $('import-file').addEventListener('change', async event => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !document.querySelector('dialog[open]')) { event.preventDefault(); saveBoardFile(event.shiftKey); return; }
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
+  if (event.key === 'Escape') { cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); return; }

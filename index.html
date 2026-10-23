@@ -40,6 +40,8 @@
   <aside class="sidebar" id="sidebar" aria-label="Note supplies">
     <div class="sidebar-heading"><a class="brand" href="./" aria-label="Cork home"><span class="brand-mark" aria-hidden="true"><span></span></span><span>cork<span class="brand-period">.</span></span></a><button id="new-board" class="icon-button new-board-quick" title="New board" aria-label="New board"><svg><use href="#i-plus"/></svg></button><button id="close-sidebar" class="icon-button sidebar-close" aria-label="Collapse sidebar" title="Collapse sidebar"><svg><use href="#i-collapse"/></svg></button></div>
     <section id="boards-section" class="boards-section" aria-label="Boards">
+      <button id="all-boards-button" class="all-boards-button" aria-haspopup="true" aria-expanded="false">All boards <span id="board-total"></span><span aria-hidden="true">⌄</span></button>
+      <div id="all-boards-menu" class="board-menu all-boards-menu" hidden><label class="board-search"><svg><use href="#i-search"/></svg><input id="board-search" type="search" aria-label="Find a board" placeholder="Find a board" autocomplete="off"></label><div id="all-boards-list" class="all-boards-list"></div></div>
       <div id="board-tabs" class="board-tabs" role="tablist" aria-label="Board tabs" aria-orientation="horizontal"></div>
     </section>
     <div class="board-details">

@@ -62,7 +62,7 @@ Shortcuts do not fire while you type in a text field.
 
 ## Board tabs and local files
 
-Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open one or more board `.json` files. The tabs stay in the left sidebar, with a simple underline on the active tab. The tab strip appears when more than one board is open. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
+Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open one or more board `.json` files. The tabs stay in the left sidebar, with a simple underline on the active tab. The tab strip appears when more than one board is open. Tabs wrap and scroll vertically when needed. With several boards, **All boards** opens a searchable list of every open or closed board; search by board name or filename to switch directly. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
 
 **⋯ → Duplicate board** creates an independent copy in a new tab, including notes, connections, appearance, text styles, and its categories list. It starts without a linked board file. **Save** asks for a new destination; choosing a file already linked to another board is blocked. Editing a duplicate never changes the source board.
 
