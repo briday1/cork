@@ -17,6 +17,8 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 **Index card** places a larger, lined card with its own editable title and no category. Both notes and index cards expand with their content. Drag the bottom grip up or down to make a note or card shorter or taller. Drag the bottom-right corner to resize width and height together. Written content always stays visible. Double-click the bottom grip to restore automatic height, or the corner to restore automatic sizing. With a grip focused, use the arrow keys to resize; hold Shift for one-pixel adjustments.
 
+**Select multiple items:** Shift-click to add or remove notes, cards, photos, folders, or strings from the selection. The **Select tool** beside the hand tool also lets you click to toggle items or drag a box across the cork. Hold Shift while drawing another box to add to the selection. Drag a selected item in Select mode, or its top edge in normal mode, to move the selected papers together; strings follow their pins. Arrow keys on a selected item’s move handle move the whole group. Use **Delete selected elements** (or Delete/Backspace) to remove the selection and any attached strings in one undoable change. **Clear selection** clears the group; Escape also exits Select mode. Hold Space to pan temporarily without losing your selection.
+
 Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Random category** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
 
 **Images**, beside **Index card**, opens an image file picker. Choose a file, then click the board to place a fixed 286 × 348 Polaroid. Write a caption of up to 120 characters underneath; captions use the same larger font as note headings and fit within the footer. Click the photo to open the full original in a new tab. Move the Polaroid by its top edge. The image is cropped to a square inside the frame; the original remains intact. PNG, JPEG, WebP, GIF, and AVIF originals are retained; other browser-readable formats are flattened to PNG.
@@ -44,10 +46,13 @@ Shortcuts do not fire while you type in a text field.
 | `R` | Attach a random category note |
 | `I` | Attach an index card |
 | `/` | Search categories |
+| `V` | Toggle the Select tool |
+| `Shift` + click | Add or remove an element from the selection |
+| `Ctrl/Cmd+A` | Select every paper item when not editing text |
 | `Enter` | Pin an attached note at the preview position |
-| `Escape` | Cancel placement or close a menu |
+| `Escape` | Clear selection, exit Select mode, cancel placement, or close a menu |
 | Hold `Space` | Temporarily use the hand tool |
-| `Delete` / `Backspace` | Delete the selected note when not editing text |
+| `Delete` / `Backspace` | Delete the selected elements when not editing text |
 | `Ctrl/Cmd+Z` | Undo a board change when not editing text |
 | `Ctrl/Cmd+Shift+Z` or `Ctrl/Cmd+Y` | Redo a board change |
 

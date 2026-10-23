@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const output = path.join(root, 'dist');
 await rm(output, {recursive: true, force: true});
 await mkdir(output, {recursive: true});
-const modules = ['app.js', 'board-core.js', 'export-pdf.js', 'export-core.js', 'image-store.js', 'category-file.js'];
+const modules = ['app.js', 'board-core.js', 'export-pdf.js', 'export-core.js', 'image-store.js', 'category-file.js', 'selection-core.js'];
 for (const file of ['index.html', 'styles.css', ...modules, 'categories.txt', 'favicon.svg', '.nojekyll']) {
   await access(path.join(root, file));
   await copyFile(path.join(root, file), path.join(output, file));

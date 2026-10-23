@@ -2,6 +2,7 @@ import {STORAGE_KEY, parseCategoryFile, missingBoardCategories, directoryNameFro
 import {prepareImage, putImage, getImage, exportImages, importImages, putFolder, getFolder} from './image-store.js';
 import {connectionGeometry} from './export-core.js';
 import {readCategoryFile, readCategoryCache, writeCategoryCache, readLinkedCategories, getCategoryHandle, putCategoryHandle} from './category-file.js';
+import {selectionBounds, notesInSelection} from './selection-core.js';
 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
@@ -17,10 +18,12 @@ let categories = [];
 let frequentCategories = new Set();
 let categoryFile = null, categoryHandle = null, categoryText = '', categoryStatus = '';
 let categoryRevision = 0, categoryBusy = false, categoriesReady = false, lastCategoryCheck = 0;
-let selected = null;
+const selected = new Set();
+const selectedStrings = new Set();
 let placement = null;
 let pointer = null;
 let handMode = false;
+let selectMode = false;
 let spaceHeld = false;
 let gesture = null;
 let categoryLoadFailed = false;
@@ -30,7 +33,7 @@ let pendingImport;
 let pendingImages = [];
 let folderPickTarget = null;
 let pdfExporting = false;
-let stringMode = false, stringStart = null, selectedString = null, stringFrame = 0, stringLayer;
+let stringMode = false, stringStart = null, stringFrame = 0, stringLayer;
 let savingBlocked = false;
 let startupProblem = '';
 const undoStack = [];
@@ -104,12 +107,13 @@ function updateHistory() {
 
 function historyStep(from, to) {
   if (!from.length) return;
+  cancelGesture();
   setStringMode(false);
   cancelPlacement();
   document.activeElement?.blur();
   to.push(JSON.stringify(board));
   board = validateBoard(JSON.parse(from.pop()));
-  selected = null;
+  setSelected(null);
   renderBoard();
   updateHistory();
   saveNow();
@@ -339,10 +343,10 @@ function updateNoteColors() {
 
 function updateCounts() {
   $('note-count').textContent = `${board.notes.length} ${board.notes.length === 1 ? 'note' : 'notes'}`;
-  $('board-tip').hidden = !board.notes.length;
   $('export-pdf').disabled = pdfExporting || !board.notes.length;
   $('add-string').disabled = board.notes.length < 2;
   if (board.notes.length < 2 && stringMode) setStringMode(false);
+  updateSelection();
 }
 
 function queueStrings() {
@@ -351,10 +355,11 @@ function queueStrings() {
 }
 
 function setStringMode(active) {
+  if (active) { setSelectMode(false); setSelected(null); }
   stringMode = active; stringStart = null;
   viewport.classList.toggle('is-connecting', active);
   $('add-string').setAttribute('aria-pressed', String(active));
-  $('board-tip').textContent = active ? 'Select the first item.' : 'Scroll to zoom. Drag the cork to pan.';
+  updateBoardTip();
   for (const element of noteElements.values()) element.classList.remove('is-string-start');
 }
 
@@ -369,11 +374,6 @@ function chooseStringItem(id) {
     record(); board.connections.push({id: crypto.randomUUID(), from: stringStart, to: id}); saveNow();
   }
   setStringMode(false); renderStrings();
-}
-
-function removeString(id) {
-  record(); board.connections = board.connections.filter(connection => connection.id !== id);
-  selectedString = null; renderStrings(); saveNow();
 }
 
 function renderStrings() {
@@ -395,15 +395,33 @@ function renderStrings() {
     const rect = note => ({...note, width: parseFloat(getComputedStyle(noteElements.get(note.id)).width)});
     const curve = connectionGeometry(rect(from), rect(to));
     const d = `M ${curve.from.x} ${curve.from.y} Q ${curve.control.x} ${curve.control.y} ${curve.to.x} ${curve.to.y}`;
-    const group = svg('g', {class: `yarn${selectedString === connection.id ? ' is-selected' : ''}`});
+    const group = svg('g', {class: `yarn${selectedStrings.has(connection.id) ? ' is-selected' : ''}`, 'data-connection-id': connection.id});
     group.append(svg('path', {d, class: 'yarn-base'}), svg('path', {d, class: 'yarn-twist'}));
-    const hit = svg('path', {d, class: 'connection-hit', tabindex: '0', role: 'button', 'aria-label': 'Connection. Press Delete to remove.'});
-    hit.addEventListener('click', event => { event.stopPropagation(); setSelected(null); selectedString = connection.id; renderStrings(); });
-    hit.addEventListener('focus', () => {
-      setSelected(null); selectedString = connection.id;
-      for (const yarn of stringLayer.querySelectorAll('.yarn')) yarn.classList.toggle('is-selected', yarn === group);
+    const hit = svg('path', {d, class: 'connection-hit', tabindex: '0', role: 'button', 'aria-pressed': String(selectedStrings.has(connection.id)), 'aria-label': 'Connection. Press Delete to remove.'});
+    hit.addEventListener('click', event => {
+      event.stopPropagation();
+      if (handMode || spaceHeld || Date.now() < suppressNoteClickUntil) return;
+      document.activeElement?.blur();
+      const additive = event.shiftKey || selectMode;
+      if (!additive) setSelected(null);
+      if (additive && selectedStrings.has(connection.id)) selectedStrings.delete(connection.id);
+      else selectedStrings.add(connection.id);
+      updateSelection();
     });
-    hit.addEventListener('keydown', event => { if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); removeString(connection.id); } });
+    hit.addEventListener('focus', () => {
+      if (selectedStrings.has(connection.id)) return;
+      if (!selectMode) setSelected(null);
+      selectedStrings.add(connection.id); updateSelection();
+    });
+    hit.addEventListener('keydown', event => {
+      if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); removeSelection(); }
+      else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault(); event.stopPropagation();
+        if (selectedStrings.has(connection.id)) selectedStrings.delete(connection.id);
+        else selectedStrings.add(connection.id);
+        updateSelection();
+      }
+    });
     group.append(hit); stringLayer.append(group);
     connected.add(from.id); connected.add(to.id); pins.set(from.id, curve.from); pins.set(to.id, curve.to);
   }
@@ -460,11 +478,61 @@ function localPoint(event) {
   return {x: event.clientX - rect.left, y: event.clientY - rect.top};
 }
 
-function setSelected(id) {
-  if (id) { selectedString = null; queueStrings(); }
-  if (selected) noteElements.get(selected)?.classList.remove('is-selected');
-  selected = id;
-  if (id) noteElements.get(id)?.classList.add('is-selected');
+function setSelected(ids) {
+  selected.clear(); selectedStrings.clear();
+  for (const id of typeof ids === 'string' ? [ids] : ids || []) selected.add(id);
+  updateSelection();
+}
+
+function updateSelection() {
+  for (const id of selected) if (!noteElements.has(id)) selected.delete(id);
+  const links = new Set(board.connections.map(link => link.id));
+  for (const id of selectedStrings) if (!links.has(id)) selectedStrings.delete(id);
+  for (const [id, element] of noteElements) {
+    element.classList.toggle('is-selected', selected.has(id));
+    element.querySelector('.note-drag')?.setAttribute('aria-pressed', String(selected.has(id)));
+    for (const input of element.querySelectorAll('textarea')) { input.readOnly = selectMode; input.tabIndex = selectMode ? -1 : 0; }
+    for (const control of element.querySelectorAll('.note-actions button, .note-resize, .note-resize-height, .folder-open, .polaroid-photo')) control.tabIndex = selectMode ? -1 : 0;
+  }
+  for (const yarn of stringLayer?.querySelectorAll('.yarn') || []) {
+    const active = selectedStrings.has(yarn.dataset.connectionId);
+    yarn.classList.toggle('is-selected', active);
+    yarn.querySelector('.connection-hit').setAttribute('aria-pressed', String(active));
+  }
+  const count = selected.size + selectedStrings.size;
+  viewport.classList.toggle('has-multi-selection', count > 1);
+  $('selection-tools').hidden = !count || (!selectMode && count < 2);
+  const label = `${count} selected`;
+  if ($('selection-count').textContent !== label) $('selection-count').textContent = label;
+  updateBoardTip();
+}
+
+function updateBoardTip() {
+  $('board-tip').hidden = !board.notes.length || !$('selection-tools').hidden;
+  $('board-tip').textContent = stringMode ? (stringStart ? 'Select a different item.' : 'Select the first item.') : selectMode ? 'Click items or drag a box to select. Drag selected items to move them.' : 'Scroll to zoom. Drag the cork to pan.';
+}
+
+function setSelectMode(active) {
+  selectMode = active;
+  if (active) {
+    document.activeElement?.blur();
+    cancelPlacement(); setStringMode(false);
+    handMode = false; spaceHeld = false; updateHandMode();
+  }
+  viewport.classList.toggle('selection-mode', active);
+  $('select-mode').setAttribute('aria-pressed', String(active));
+  updateSelection();
+}
+
+function selectedNotes() { return board.notes.filter(note => selected.has(note.id)); }
+
+function moveNotes(notes, dx, dy) {
+  for (const note of notes) {
+    note.x += dx; note.y += dy;
+    const element = noteElements.get(note.id);
+    element.style.left = `${note.x}px`; element.style.top = `${note.y}px`;
+  }
+  queueStrings();
 }
 
 function bringForward(id) {
@@ -560,7 +628,7 @@ function useMobileFocus(input, note) {
     if (compactLayout.matches && Date.now() >= suppressNoteClickUntil) input.focus({preventScroll: true});
   });
   input.addEventListener('focus', () => {
-    if (!compactLayout.matches) return;
+    if (!compactLayout.matches || selectMode) return;
     mobileEditing = {note, input}; setSelected(note.id);
     $('finish-editing').hidden = false;
     document.body.classList.add('note-editing');
@@ -600,17 +668,20 @@ function getImageResource(id) {
 
 function wireNoteMovement(element, note, handle) {
   handle.addEventListener('keydown', event => {
+    if (selectMode && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault(); event.stopPropagation();
+      if (selected.has(note.id)) selected.delete(note.id); else selected.add(note.id);
+      updateSelection(); return;
+    }
     const direction = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[event.key];
     if (!direction) return;
     event.preventDefault(); record();
+    if (!selected.has(note.id)) setSelected(note.id);
     const step = event.shiftKey ? 1 : 10;
-    note.x += direction[0] * step; note.y += direction[1] * step;
-    element.style.left = `${note.x}px`; element.style.top = `${note.y}px`; saveSoon();
-    queueStrings();
+    moveNotes(selectedNotes(), direction[0] * step, direction[1] * step); saveSoon();
   });
-  element.addEventListener('pointerdown', () => { setSelected(note.id); bringForward(note.id); });
   element.addEventListener('focusin', () => {
-    if (!compactLayout.matches) { revealOnBoard(note, element); saveSoon(); }
+    if (!compactLayout.matches && !selectMode) { revealOnBoard(note, element); saveSoon(); }
   });
 }
 
@@ -822,6 +893,8 @@ function setSidebar(open, remember = false) {
 }
 
 function startPlacement(type, category = '', assetId = null, folderName = '') {
+  cancelGesture();
+  setSelectMode(false);
   setStringMode(false);
   handMode = false; spaceHeld = false;
   updateHandMode(); setSelected(null);
@@ -874,10 +947,20 @@ function placeNote(point) {
 }
 
 function removeNote(id) {
-  record(); board.notes = board.notes.filter(n => n.id !== id);
-  board.connections = board.connections.filter(connection => connection.from !== id && connection.to !== id);
-  noteElements.get(id)?.remove(); noteElements.delete(id); setSelected(null);
-  renderStrings(); renderCategories(); updateCounts(); saveNow(); toast('Item removed.', true);
+  removeElements(new Set([id]), new Set());
+}
+
+function removeSelection() {
+  if (selected.size || selectedStrings.size) removeElements(new Set(selected), new Set(selectedStrings));
+}
+
+function removeElements(items, strings) {
+  record(); board.notes = board.notes.filter(note => !items.has(note.id));
+  board.connections = board.connections.filter(link => !items.has(link.from) && !items.has(link.to) && !strings.has(link.id));
+  for (const id of items) { noteElements.get(id)?.remove(); noteElements.delete(id); }
+  setSelected(null);
+  renderStrings(); renderCategories(); updateCounts(); saveNow();
+  toast(items.size + strings.size === 1 ? 'Item removed.' : `${items.size + strings.size} items removed.`, true);
 }
 
 function duplicateNote(note) {
@@ -923,20 +1006,51 @@ function fitView() {
   applyView(); saveSoon();
 }
 
-viewport.addEventListener('pointerdown', event => {
-  if (stringMode && event.target.closest('.note')) { event.preventDefault(); event.stopPropagation(); }
-}, true);
 viewport.addEventListener('click', event => {
-  if (!stringMode || !event.target.closest('.note')) return;
-  event.preventDefault(); event.stopPropagation(); chooseStringItem(event.target.closest('.note').dataset.noteId);
+  const element = event.target.closest('.note');
+  if (!element) return;
+  if (stringMode) {
+    event.preventDefault(); event.stopPropagation(); chooseStringItem(element.dataset.noteId);
+  } else if (selectMode || event.shiftKey) {
+    event.preventDefault(); event.stopPropagation();
+  }
 }, true);
+
+function clearGestureVisuals() {
+  for (const element of noteElements.values()) element.classList.remove('is-dragging', 'is-resizing');
+  $('selection-box').hidden = true;
+  viewport.classList.remove('is-panning', 'is-box-selecting');
+}
+
+function restoreBoxSelection() {
+  if (gesture?.type !== 'marquee') return;
+  selected.clear(); selectedStrings.clear();
+  for (const id of gesture.originalItems) selected.add(id);
+  for (const id of gesture.originalStrings) selectedStrings.add(id);
+  updateSelection();
+}
+
+function cancelGesture() {
+  restoreBoxSelection(); clearGestureVisuals();
+  if (gesture?.moved && ['notes', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type)) saveSoon();
+  for (const id of activePointers.keys()) if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
+  activePointers.clear(); gesture = null;
+}
+
 viewport.addEventListener('pointerdown', event => {
-  if (event.target.closest('.board-footer, .placement-bar, .sidebar-toggle, .mobile-done, .connection-hit')) return;
+  if (event.target.closest('.board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
   if (event.button !== 0 && event.button !== 1) return;
+  const noteElement = event.target.closest('.note');
+  if (stringMode && noteElement) { event.preventDefault(); event.stopPropagation(); return; }
+  const pan = handMode || spaceHeld || event.button === 1;
+  if (event.target.closest('.connection-hit') && !pan) {
+    if (event.shiftKey || selectMode) event.preventDefault();
+    return;
+  }
   activePointers.set(event.pointerId, localPoint(event));
   if (activePointers.size >= 2) {
     if (gesture?.type === 'pinch') { viewport.setPointerCapture(event.pointerId); return; }
-    if (gesture?.element) gesture.element.classList.remove('is-dragging', 'is-resizing');
+    restoreBoxSelection(); clearGestureVisuals();
     if (mobileEditing) mobileEditing.input.blur();
     const [a, b] = [...activePointers.values()];
     gesture = {type: 'pinch', distance: Math.hypot(b.x - a.x, b.y - a.y), center: {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2}, view: {...board.view}, moved: true};
@@ -944,26 +1058,55 @@ viewport.addEventListener('pointerdown', event => {
     event.preventDefault(); return;
   }
   const point = localPoint(event);
-  const noteElement = event.target.closest('.note');
   const controls = event.target.closest('.note-actions, .note-content, .note-title-input');
   if (placement) {
     gesture = {type: 'place', pointerId: event.pointerId, start: point, moved: false}; viewport.setPointerCapture(event.pointerId); return;
   }
-  if (controls && !handMode && !spaceHeld) return;
   const note = noteElement && board.notes.find(n => n.id === noteElement.dataset.noteId);
-  if (note && !handMode && !spaceHeld) {
+  if (note && !pan && (selectMode || event.shiftKey)) {
+    document.activeElement?.blur(); viewport.focus({preventScroll: true});
+    event.preventDefault(); event.stopPropagation();
+    const alreadySelected = selected.has(note.id);
+    if (event.shiftKey) {
+      if (alreadySelected) selected.delete(note.id); else selected.add(note.id);
+      updateSelection();
+      gesture = {type: 'selection-click', pointerId: event.pointerId, start: point, moved: false};
+    } else {
+      selected.add(note.id); updateSelection();
+      gesture = {type: 'notes', pointerId: event.pointerId, start: point, items: selectedNotes().map(note => ({note, x: note.x, y: note.y})), deselectOnClick: alreadySelected ? note.id : null, moved: false};
+    }
+  } else if (note && !pan) {
+    if (event.target.closest('.note-actions')) return;
+    if (!selected.has(note.id) || controls) setSelected(note.id);
+    if (controls) { bringForward(note.id); return; }
     const resize = event.target.closest('.note-resize');
     const resizeHeight = event.target.closest('.note-resize-height');
-    if (!resize && !resizeHeight && !event.target.closest('.note-drag')) return;
-    gesture = {type: resize ? 'resize' : resizeHeight ? 'resize-height' : 'note', pointerId: event.pointerId, start: point, note, element: noteElement, x: note.x, y: note.y, width: noteElement.offsetWidth, height: noteElement.offsetHeight, moved: false};
+    if (resize || resizeHeight) {
+      setSelected(note.id);
+      gesture = {type: resize ? 'resize' : 'resize-height', pointerId: event.pointerId, start: point, note, element: noteElement, width: noteElement.offsetWidth, height: noteElement.offsetHeight, moved: false};
+    } else {
+      if (!event.target.closest('.note-drag') && selected.size < 2) return;
+      document.activeElement?.blur(); viewport.focus({preventScroll: true});
+      gesture = {type: 'notes', pointerId: event.pointerId, start: point, items: selectedNotes().map(note => ({note, x: note.x, y: note.y})), moved: false};
+    }
+    event.preventDefault();
+  } else if (!pan && (selectMode || event.shiftKey)) {
+    document.activeElement?.blur(); viewport.focus({preventScroll: true});
+    const originalItems = new Set(selected), originalStrings = new Set(selectedStrings);
+    const base = new Set(event.shiftKey ? selected : []);
+    if (!event.shiftKey) setSelected(null);
+    gesture = {type: 'marquee', pointerId: event.pointerId, start: point, base, originalItems, originalStrings, moved: false,
+      bounds: board.notes.map(note => ({...note, width: noteElements.get(note.id).offsetWidth, height: noteElements.get(note.id).offsetHeight}))};
+    viewport.classList.add('is-box-selecting');
     event.preventDefault();
   } else {
-    document.activeElement?.blur(); setSelected(null);
+    document.activeElement?.blur();
+    if (!pan) setSelected(null);
     gesture = {type: 'pan', pointerId: event.pointerId, start: point, view: {...board.view}, moved: false};
     event.preventDefault();
   }
   viewport.setPointerCapture(event.pointerId);
-});
+}, true);
 
 viewport.addEventListener('pointermove', event => {
   const point = localPoint(event); pointer = point;
@@ -984,15 +1127,31 @@ viewport.addEventListener('pointermove', event => {
   if (!gesture.moved && Math.hypot(dx, dy) < 4) return;
   if (!gesture.moved) {
     gesture.moved = true;
-    if (gesture.type === 'note' || gesture.type === 'resize' || gesture.type === 'resize-height') record();
+    if (gesture.type === 'notes' || gesture.type === 'resize' || gesture.type === 'resize-height') record();
+    if (gesture.type === 'notes') {
+      const moved = new Set(gesture.items.map(item => item.note.id));
+      board.notes = [...board.notes.filter(note => !moved.has(note.id)), ...board.notes.filter(note => moved.has(note.id))];
+      board.notes.forEach((note, i) => { noteElements.get(note.id).style.zIndex = String(i + 1); });
+    }
   }
   if (gesture.type === 'place') { movePreview(point); return; }
-  if (gesture.type === 'pan') {
+  if (gesture.type === 'marquee') {
+    const bounds = selectionBounds(gesture.start, point), box = $('selection-box');
+    box.hidden = false; box.style.left = `${bounds.left}px`; box.style.top = `${bounds.top}px`;
+    box.style.width = `${bounds.right - bounds.left}px`; box.style.height = `${bounds.bottom - bounds.top}px`;
+    const hits = notesInSelection(gesture.bounds, selectionBounds(screenToWorld(gesture.start, board.view), screenToWorld(point, board.view)));
+    selected.clear();
+    for (const id of [...gesture.base, ...hits]) selected.add(id);
+    updateSelection();
+  } else if (gesture.type === 'pan') {
     board.view.x = gesture.view.x + dx; board.view.y = gesture.view.y + dy;
     viewport.classList.add('is-panning'); applyView();
-  } else if (gesture.type === 'note') {
-    gesture.note.x = gesture.x + dx / board.view.zoom; gesture.note.y = gesture.y + dy / board.view.zoom;
-    gesture.element.style.left = `${gesture.note.x}px`; gesture.element.style.top = `${gesture.note.y}px`; gesture.element.classList.add('is-dragging');
+  } else if (gesture.type === 'notes') {
+    for (const item of gesture.items) {
+      item.note.x = item.x + dx / board.view.zoom; item.note.y = item.y + dy / board.view.zoom;
+      const element = noteElements.get(item.note.id);
+      element.style.left = `${item.note.x}px`; element.style.top = `${item.note.y}px`; element.classList.add('is-dragging');
+    }
     queueStrings();
   } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
     if (gesture.type === 'resize') gesture.note.width = Math.max(190, Math.min(800, gesture.width + dx / board.view.zoom));
@@ -1016,12 +1175,16 @@ function endGesture(event) {
     }
     saveSoon(); return;
   }
+  if (gesture.type === 'marquee' && event.type === 'pointercancel') restoreBoxSelection();
+  if (gesture.type === 'notes' && !gesture.moved && gesture.deselectOnClick && event.type === 'pointerup') {
+    selected.delete(gesture.deselectOnClick); updateSelection();
+  }
+  const changed = gesture.moved && ['notes', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type);
   if (gesture.type === 'place' && event.type === 'pointerup') placeNote(localPoint(event));
-  if (gesture.element) gesture.element.classList.remove('is-dragging', 'is-resizing');
-  viewport.classList.remove('is-panning');
+  clearGestureVisuals();
   gesture = null;
   if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
-  saveSoon();
+  if (changed) saveSoon();
 }
 window.addEventListener('pointerup', endGesture);
 window.addEventListener('pointercancel', endGesture);
@@ -1031,6 +1194,7 @@ viewport.addEventListener('wheel', event => {
   // Leave note text and floating controls alone; the cork itself always zooms.
   if (event.target.closest('.note-content, .note-title-input, .board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
   event.preventDefault();
+  if (gesture) return;
   const unit = event.deltaMode === 1 ? 18 : event.deltaMode === 2 ? viewport.clientHeight : 1;
   // Clamp unusually large wheel ticks without losing high-resolution trackpad input.
   const delta = Math.max(-200, Math.min(200, event.deltaY * unit));
@@ -1124,7 +1288,10 @@ $('zoom-in').addEventListener('click', () => changeZoom(1.2));
 $('zoom-out').addEventListener('click', () => changeZoom(1 / 1.2));
 $('zoom-reset').addEventListener('click', () => { board.view = zoomAt(board.view, 1, {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2}); applyView(); saveSoon(); });
 $('fit-view').addEventListener('click', fitView);
-$('pan-mode').addEventListener('click', () => { cancelPlacement(); handMode = !handMode; updateHandMode(); });
+$('pan-mode').addEventListener('click', () => { cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode = !handMode; updateHandMode(); });
+$('select-mode').addEventListener('click', () => { cancelGesture(); setSelectMode(!selectMode); });
+$('delete-selection').addEventListener('click', removeSelection);
+$('clear-selection').addEventListener('click', () => setSelected(null));
 $('reset-view').addEventListener('click', () => { board.view = {x: 0, y: 0, zoom: 1}; applyView(); saveSoon(); closeMenu(); });
 $('toggle-sidebar').addEventListener('click', () => setSidebar(true, true));
 $('sidebar-scrim').addEventListener('click', () => setSidebar(false));
@@ -1209,7 +1376,7 @@ $('confirm-import').addEventListener('click', async () => {
   $('cancel-import').disabled = true;
   try {
   for (const asset of pendingImages) await putImage(asset);
-  record(); setStringMode(false); cancelPlacement(); board = pendingImport; pendingImport = null;
+  cancelGesture(); record(); setStringMode(false); cancelPlacement(); board = pendingImport; pendingImport = null;
   pendingImages = [];
   $('import-dialog').close(); setSelected(null); renderBoard();
   saveNow(); toast('Board imported.', true);
@@ -1219,25 +1386,25 @@ $('confirm-import').addEventListener('click', async () => {
 
 document.addEventListener('keydown', event => {
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { setStringMode(false); cancelPlacement(); closeMenu(); if (compactLayout.matches) setSidebar(false); return; }
+  if (event.key === 'Escape') { cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); return; }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); historyStep(event.shiftKey ? redoStack : undoStack, event.shiftKey ? undoStack : redoStack); return; }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); historyStep(redoStack, undoStack); return; }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.key.toLowerCase() === 'r') { event.preventDefault(); randomCategory(); }
+  else if (event.key.toLowerCase() === 'v') { event.preventDefault(); cancelGesture(); setSelectMode(!selectMode); }
   else if (event.key.toLowerCase() === 'i') { event.preventDefault(); startPlacement('card'); }
   else if (event.key === '/') { event.preventDefault(); setSidebar(true); $('category-search').focus(); }
   else if (event.key === ' ') { event.preventDefault(); spaceHeld = true; updateHandMode(); }
-  else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedString) { event.preventDefault(); removeString(selectedString); }
-  else if ((event.key === 'Delete' || event.key === 'Backspace') && selected) { event.preventDefault(); removeNote(selected); }
+  else if ((event.key === 'Delete' || event.key === 'Backspace') && (selected.size || selectedStrings.size)) { event.preventDefault(); removeSelection(); }
   else if (event.key === 'Enter' && placement) { event.preventDefault(); placeNote(pointer || {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2}); }
 });
 document.addEventListener('keyup', event => { if (event.key === ' ') { spaceHeld = false; updateHandMode(); } });
 window.addEventListener('blur', () => {
   spaceHeld = false; updateHandMode();
-  if (gesture?.element) gesture.element.classList.remove('is-dragging', 'is-resizing');
-  gesture = null; activePointers.clear(); viewport.classList.remove('is-panning');
+  cancelGesture();
 });
 window.addEventListener('pagehide', saveNow);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); else checkCategoryFile(); });

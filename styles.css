@@ -128,6 +128,20 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 .note{position:absolute;width:248px;min-height:184px;padding:0 19px 21px;background:linear-gradient(175deg,#ffffff12,transparent 45%,#00000004),var(--note-color,#f2de9c);color:#3f4438;box-shadow:0 1px 2px #513d2126,1px 5px 9px -4px #513d2138;border-radius:1px 1px 3px 2px;transform:rotate(var(--tilt,0deg));transform-origin:50% 20px;cursor:default;transition:box-shadow .12s;touch-action:auto}
 .note:after{content:"";position:absolute;left:0;right:0;top:0;height:27px;background:linear-gradient(#ffffff16,#ffffff06);pointer-events:none}
 .note.is-selected{outline:1px solid #52694388;outline-offset:3px}
+.viewport.has-multi-selection .note.is-selected,.viewport.selection-mode .note.is-selected{outline:2px solid #477985;outline-offset:3px}
+.selection-box{position:absolute;pointer-events:none;border:1px solid #477985;background:#70adb62b;z-index:20000}
+.viewport.selection-mode:not(.hand-mode),.viewport.is-box-selecting{cursor:crosshair}
+.viewport.selection-mode:not(.hand-mode) .note{cursor:move;user-select:none}
+.viewport.selection-mode .note textarea,.viewport.selection-mode .note button,.viewport.selection-mode .polaroid-photo,.viewport.selection-mode .note-resize,.viewport.selection-mode .note-resize-height{pointer-events:none}
+.viewport.hand-mode .connection-hit{pointer-events:none}
+.viewport.selection-mode .note-actions,.viewport.selection-mode .note-resize,.viewport.selection-mode .note-resize-height{visibility:hidden}
+.selection-tools{display:flex;align-items:center;gap:7px;padding:4px 5px 4px 12px;pointer-events:auto;background:#fafbf6f5;border:1px solid #ffffff85;border-radius:10px;box-shadow:0 2px 10px #46351b14;white-space:nowrap;color:#5c6d58;font-size:12px}
+.selection-tools>span{padding-right:5px;font-variant-numeric:tabular-nums}
+.selection-tools button{display:flex;align-items:center;justify-content:center;gap:5px;min-height:32px;padding:5px 8px;border-radius:6px}
+.selection-tools button:hover{background:#e8ecde}
+.selection-tools svg{width:16px;height:16px}
+@media(max-width:900px){.selection-tools{position:absolute;right:0;bottom:58px}}
+@media(pointer:coarse){.selection-tools button{min-height:44px;min-width:44px}}
 .note.is-dragging{box-shadow:0 2px 4px #49351e26,3px 12px 18px -4px #49351e45;z-index:100000!important;cursor:var(--grabbing)}
 .note-drag{height:35px;display:flex;align-items:center;justify-content:center;margin:0 -19px;cursor:var(--grab);touch-action:none;position:relative;z-index:2}
 .note-drag:focus-visible{outline-offset:-4px}
@@ -505,8 +519,9 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
 .yarn-base { stroke: #9e3027; stroke-width: 2.4; }
 .yarn-twist { stroke: #e06e57; stroke-width: .7; stroke-dasharray: 1 2; opacity: .9; }
 .connection-hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; outline: none; }
-.yarn.is-selected .yarn-base, .yarn:focus-within .yarn-base { stroke: #00cfe8; stroke-width: 3.5; }
-.yarn.is-selected .yarn-twist, .yarn:focus-within .yarn-twist { stroke: #bafaff; }
+.yarn.is-selected .yarn-base { stroke: #00cfe8; stroke-width: 3.5; }
+.yarn.is-selected .yarn-twist { stroke: #bafaff; }
+.yarn:focus-within .yarn-base { stroke-width: 4; }
 .connection-pin { pointer-events: none; }
 .note.is-connected .pin { opacity: 0 !important; }
 .viewport.is-connecting, .viewport.is-connecting .note, .viewport.is-connecting .note * { cursor: crosshair !important; }
