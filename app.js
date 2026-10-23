@@ -122,6 +122,7 @@ function renderBoardTabs() {
   }
   $('recent-boards').hidden = !closed.childElementCount;
   updateBoardFiles();
+  requestAnimationFrame(() => $('board-tabs').querySelector('[aria-selected=true]')?.scrollIntoView?.({block: 'nearest', inline: 'nearest'}));
 }
 
 function updateBoardFiles() {
