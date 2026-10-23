@@ -109,6 +109,8 @@ The board uses a bundled photograph of real cork. The grain moves and scales wit
 
 Use **Appearance** at the bottom of the sidebar to choose **System**, **Light**, or **Dark** for the interface. System is the default and follows operating-system changes; a manual choice stays remembered across board tabs. The paper-like sidebar uses plain text controls and small tool icons. The board menu holds file actions. For the board background, choose **Natural cork**, **Pale cork**, **Dark cork**, or textured construction paper in **Cream**, **Sage**, or **Blue**. Paper grain and fibers are generated from board coordinates, with different detail across the surface instead of a repeating image. The texture moves and scales with the board, and renders at the current zoom and display resolution. Each board remembers its background, including in saved board files and duplicates. PDF export omits either background. Independently choose a category color map:
 
+![Sage construction paper with procedural grain that moves and scales with the board.](./docs/cork-paper.jpg)
+
 | Color map | Character |
 | --- | --- |
 | **HSV · soft paper** (default) | Evenly spaced cyclic hues; softened saturation keeps dark note text legible |
