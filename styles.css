@@ -622,9 +622,6 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
 .appearance-section .palette-control { border: 0; padding: 5px 3px 10px; }
 .help-button { font-weight: 400; font-size: 11px; padding: 8px 3px; color: #949b8a; }
 .help-button svg { width: 15px; height: 15px; }
-.recent-boards summary { padding: 10px 14px; cursor: pointer; font-size: 12px; color: #77846a; }
-.recent-boards button { padding-left: 24px; }
-#closed-boards { max-height: 200px; overflow-y: auto; }
 @media (pointer:coarse) {
   .boards-heading button,.board-tab,.close-board-tab,#save-board,.board-tools .icon-button,.category-row,.extra-supplies .index-button,.random-button,.appearance-section summary { min-height: 44px; }
   .boards-heading button,.close-board-tab { min-width: 36px; }
@@ -663,7 +660,7 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .sidebar { padding:23px 18px 12px; background:var(--rail-bg); color:var(--rail-ink); border-color:var(--rail-rule); }
 .sidebar-heading { margin-bottom:28px; gap:4px; }
 .brand { font-family:Georgia,"Times New Roman",serif; font-size:29px; font-weight:400; letter-spacing:-1.5px; flex:1; }
-.brand-mark { display:none; }
+.brand-mark { display:grid; flex-shrink:0; }
 .brand-period { color:var(--rail-accent); }
 .sidebar .icon-button { border-radius:0; color:var(--rail-muted); }
 .sidebar .icon-button:hover:not(:disabled) { background:transparent; color:var(--rail-ink); }
@@ -684,7 +681,6 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .all-boards-list { max-height:min(420px,50dvh); overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--rail-rule) transparent; }
 .all-boards-list .board-list-entry { justify-content:space-between; gap:8px; padding:9px 7px; font-size:11px; }
 .board-list-entry>span { overflow-wrap:anywhere; }
-.board-list-entry small { font-size:9px; color:var(--rail-muted); }
 .board-list-entry[aria-current=true]>span { text-decoration:underline; text-underline-offset:4px; }
 .all-boards-list p { font-size:11px; padding:8px 7px; color:var(--rail-muted); }
 .board-tab-row { flex-shrink:0; width:100%; max-width:none; border-radius:0; border-bottom:1px solid transparent; margin:0; gap:0; }
@@ -769,7 +765,7 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .sidebar select { color-scheme:inherit; }
 .sidebar select option { background-color:var(--rail-bg); color:var(--rail-ink); }
 .board-menu { border-radius:0; border-color:var(--rail-rule); background:var(--rail-bg); box-shadow:0 5px 16px #25201526; }
-.board-menu button,.board-menu a,.recent-boards summary { border-radius:0; color:var(--rail-ink); }
+.board-menu button,.board-menu a { border-radius:0; color:var(--rail-ink); }
 .board-menu button:hover,.board-menu a:hover { background:var(--rail-hover); }
 .menu-rule { background:var(--rail-rule); }
 .sidebar-toggle,.view-controls,.selection-tools { border-radius:3px; background:var(--rail-bg); border-color:var(--rail-rule); color:var(--rail-ink); }
@@ -789,3 +785,17 @@ body[data-ui-theme=dark] .board-tip { color:#e7dfcc; }
   .sidebar-bottom>.appearance-section[open] { bottom:122px; }
   .text-settings select,.text-settings input { font-size:12px; }
 }
+
+.duplicate-board-tab { display:grid; place-items:center; flex-shrink:0; width:18px; height:24px; padding:0; color:var(--rail-muted); opacity:0; }
+.duplicate-board-tab svg { width:11px; height:11px; }
+.board-tab-row:hover .duplicate-board-tab,.board-tab-row:focus-within .duplicate-board-tab { opacity:1; }
+.duplicate-board-tab:hover { color:var(--rail-ink); }
+.board-list-row { display:flex; align-items:center; }
+.all-boards-list .board-list-entry { flex:1; min-width:0; width:auto; }
+.all-boards-list .duplicate-board-list { display:grid; place-items:center; flex-shrink:0; width:27px; padding:5px; color:var(--rail-muted); opacity:0; }
+.duplicate-board-list svg { width:12px; height:12px; }
+.board-list-row:hover .duplicate-board-list,.board-list-row:focus-within .duplicate-board-list { opacity:1; }
+.all-boards-list .duplicate-board-list:hover { color:var(--rail-ink); background:none; }
+.close-board-dialog { max-width:470px; }
+.close-board-dialog h2 { margin-top:0; }
+@media(pointer:coarse) { .duplicate-board-tab,.all-boards-list .duplicate-board-list { opacity:1; min-width:32px; min-height:44px; } }

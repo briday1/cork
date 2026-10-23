@@ -12,7 +12,8 @@ export function readWorkspace(storage, base) {
   const value = JSON.parse(saved);
   const ids = new Set();
   if (value?.version !== 1 || !Array.isArray(value.boards) || !value.boards.length) throw new Error('Saved board tabs could not be read.');
-  const boards = value.boards.map(entry => {
+  // Older versions retained closed tabs. Only open boards remain in the list.
+  const boards = value.boards.filter(entry => entry?.open !== false).map(entry => {
     if (!entry || !/^[a-zA-Z0-9_-]{1,100}$/.test(entry.id) || ids.has(entry.id) || typeof entry.name !== 'string' || typeof entry.open !== 'boolean') throw new Error('Saved board tabs could not be read.');
     ids.add(entry.id);
     const file = entry.file;

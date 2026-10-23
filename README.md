@@ -35,7 +35,7 @@ In the sidebar’s **⋯** menu, **Export PDF** downloads one page cropped close
 
 Drag empty cork to pan. Use the bottom-right controls to zoom, switch to the hand tool, or fit all notes into view. A trackpad or mouse wheel zooms around the cursor without a modifier key, with small wheel increments for finer adjustment. Two-finger pinch also zooms on touch screens. On phones, tapping note text brings it in close for writing and keeps the caret above the keyboard. Tap **Done** to finish, then pinch or use **Fit all notes** to step back. Escape cancels a note before it is placed.
 
-Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for file saving, exports, recently closed boards, and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
+Select a note to reveal bullet, duplicate, and delete controls. Delete can be undone. The left sidebar holds the board name, save status, undo/redo, and the **⋯** board menu for file saving, exports, board duplication, and the guide. Click the board name to rename it. Collapse the sidebar with its chevron to give the board the whole screen; use the small sidebar button to bring it back. Desktop remembers your preference.
 
 
 ### Keyboard shortcuts
@@ -61,15 +61,15 @@ Shortcuts do not fire while you type in a text field.
 
 ## Board tabs and local files
 
-Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open one or more board `.json` files. The tabs stay in the left sidebar, with a simple underline on the active tab. The tab strip appears when more than one board is open. Boards appear one per row and scroll vertically when needed. With several boards, **All boards** opens a searchable list of every open or closed board; search by board name or filename to switch directly. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
+Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open one or more board `.json` files. The tabs stay in the left sidebar, with a simple underline on the active tab. The tab strip appears when more than one board is open. Boards appear one per row and scroll vertically when needed. With several boards, **All boards** opens a searchable list of every open board; search by board name or filename to switch directly. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
 
-**⋯ → Duplicate board** creates an independent copy in a new tab, including notes, connections, appearance, text styles, and its categories list. It starts without a linked board file. **Save** asks for a new destination; choosing a file already linked to another board is blocked. Editing a duplicate never changes the source board.
+The copy icon beside each board in the top list (or in **All boards**) duplicates that board, including an inactive one. **⋯ → Duplicate board** also creates an independent copy in a new tab, including notes, connections, appearance, text styles, and its categories list. It starts without a linked board file. **Save** asks for a new destination; choosing a file already linked to another board is blocked. Editing a duplicate never changes the source board.
 
 **Save** (Ctrl/Cmd+S) chooses a local board file the first time, then writes to that file. **⋯ → Save as…** (Ctrl/Cmd+Shift+S) chooses another file. File links are remembered where the browser supports them; it may ask for access again. A small dot on a tab and “File has changes” mean the browser copy is ahead of the saved file. Browser saving continues automatically; file writes happen when you use Save. If a file has changed outside Cork, Save asks you to use Save as to preserve both copies. Browsers without local file writing download the board instead and remember the filename.
 
-Load a categories `.txt` file independently for each tab, or keep the repository default. Two boards can deliberately use the same categories file. Opening a board file that is already linked brings its existing tab forward. Close a tab with its ×; its cached board and file pair remain available under **⋯ → Recently closed**. Closing a tab does not delete a local file. For a portable setup, keep each board `.json` together with its categories `.txt`; choose that pair once in a new browser.
+Load a categories `.txt` file independently for each tab, or keep the repository default. Two boards can deliberately use the same categories file. Opening a board file that is already linked brings its existing tab forward. Close a tab with its ×. Closed boards are removed from the list and are not remembered. Cork offers Save and close, Close without saving, and Cancel when the board has unsaved content. Closing a tab does not delete a local file. For a portable setup, keep each board `.json` together with its categories `.txt`; choose that pair once in a new browser.
 
-![Dark interface with the searchable All boards menu showing open and closed boards.](./docs/cork-dark-boards.jpg)
+![Dark interface with the searchable All boards menu showing open boards.](./docs/cork-dark-boards.jpg)
 
 ## Text style
 

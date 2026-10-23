@@ -23,10 +23,9 @@ test('existing board and categories keep their original storage and file-handle 
   assert.equal(cache.getItem(base), JSON.stringify(old));
 });
 
-test('tabs, active board, file pairs, and closed boards persist separately across visits', () => {
+test('open tabs, active board, and file pairs persist separately across visits', () => {
   const cache = storage(), base = 'cork:/one/';
   const workspace = readWorkspace(cache, base);
-  workspace.boards[0].open = false;
   workspace.boards.push({id: 'second', name: 'Work', open: true, file: {name: 'work.json', token: 'work-file', stamp: 'saved', modified: 42, size: 99}});
   workspace.activeId = 'second';
   cache.setItem(boardKeys(base, 'second').board, JSON.stringify({...blankBoard(), name: 'Work'}));
@@ -37,6 +36,17 @@ test('tabs, active board, file pairs, and closed boards persist separately acros
   assert.equal(readWorkspaceBoard(cache, base, 'second').name, 'Work');
   assert.equal(cache.getItem(boardKeys(base, 'original').categories), 'Personal categories');
   assert.equal(readWorkspace(cache, 'cork:/another/').activeId, 'original');
+});
+
+test('closed boards from earlier versions are no longer tracked', () => {
+  const cache = storage(), base = 'cork:/one/';
+  const old = readWorkspace(cache, base);
+  old.boards.push({id:'closed',name:'Old closed board',open:false,file:null});
+  writeWorkspace(cache, base, old);
+  const restored = readWorkspace(cache, base);
+  assert.deepEqual(restored.boards.map(entry => entry.id), ['original']);
+  writeWorkspace(cache, base, restored);
+  assert.ok(!cache.getItem(`${base}:workspace`).includes('Old closed board'));
 });
 
 test('broken tab lists and broken boards remain untouched for recovery', () => {

@@ -20,6 +20,7 @@ let workspace, activeSession, workspaceBlocked = false;
 const sessions = new Map(), fileTasks = new Set();
 let textTarget = 'new', textSelection = '';
 let openingBoard = false, categoryPickSession = null, imagePickSession = null, folderPickSession = null;
+let pendingCloseId = null;
 let board = blankBoard();
 let categories = [];
 let frequentCategories = new Set();
@@ -113,18 +114,15 @@ function renderBoardTabs() {
     const label = document.createElement('span'); label.className = 'board-tab-name'; label.textContent = entry.name || 'My board';
     const dot = document.createElement('span'); dot.className = 'board-tab-dot'; dot.setAttribute('aria-hidden', 'true');
     tab.append(label, dot); tab.addEventListener('click', () => switchBoard(entry.id));
+    const duplicate = document.createElement('button'); duplicate.className = 'duplicate-board-tab'; duplicate.append(icon('copy'));
+    duplicate.setAttribute('aria-label', `Duplicate ${entry.name || 'My board'} board`); duplicate.title = 'Duplicate board';
+    duplicate.addEventListener('click', () => duplicateBoard(entry.id));
     const close = document.createElement('button'); close.className = 'close-board-tab'; close.append(icon('close'));
     close.setAttribute('aria-label', `Close ${entry.name || 'My board'} tab`);
-    close.title = 'Close tab; the board stays in Recently closed';
+    close.title = 'Close board';
     close.addEventListener('click', () => closeBoardTab(entry.id));
-    row.append(tab, close); list.append(row);
+    row.append(tab, duplicate, close); list.append(row);
   }
-  const closed = $('closed-boards'); closed.replaceChildren();
-  for (const entry of workspace.boards.filter(item => !item.open).reverse()) {
-    const button = document.createElement('button'); button.textContent = entry.name || 'My board';
-    button.addEventListener('click', () => { entry.open = true; switchBoard(entry.id); closeMenu(); }); closed.append(button);
-  }
-  $('recent-boards').hidden = !closed.childElementCount;
   updateBoardFiles();
   requestAnimationFrame(() => $('board-tabs').querySelector('[aria-selected=true]')?.scrollIntoView?.({block: 'nearest', inline: 'nearest'}));
 }
@@ -138,9 +136,11 @@ function renderAllBoards() {
     button.title = entry.file?.name || 'Saved in this browser';
     const name = document.createElement('span'); name.textContent = entry.name || 'My board';
     button.append(name);
-    if (!entry.open) { const closed = document.createElement('small'); closed.textContent = 'Closed'; button.append(closed); }
-    button.addEventListener('click', () => { entry.open = true; switchBoard(entry.id); closeAllBoards(); });
-    list.append(button);
+    button.addEventListener('click', () => { switchBoard(entry.id); closeAllBoards(); });
+    const duplicate = document.createElement('button'); duplicate.className = 'duplicate-board-list'; duplicate.append(icon('copy'));
+    duplicate.setAttribute('aria-label', `Duplicate ${entry.name || 'My board'} from All boards`); duplicate.title = 'Duplicate board';
+    duplicate.addEventListener('click', () => duplicateBoard(entry.id));
+    const row = document.createElement('div'); row.className = 'board-list-row'; row.append(button, duplicate); list.append(row);
   }
   if (!list.childElementCount) { const empty = document.createElement('p'); empty.textContent = 'No matching boards.'; list.append(empty); }
 }
@@ -155,7 +155,8 @@ function updateBoardFiles() {
   for (const tab of $('board-tabs').querySelectorAll('.board-tab')) {
     const item = workspace.boards.find(item => item.id === tab.dataset.boardId), session = sessions.get(item.id);
     tab.querySelector('.board-tab-name').textContent = item.name || 'My board';
-    tab.nextElementSibling?.setAttribute('aria-label', `Close ${item.name || 'My board'} tab`);
+    tab.parentElement.querySelector('.close-board-tab')?.setAttribute('aria-label', `Close ${item.name || 'My board'} tab`);
+    tab.parentElement.querySelector('.duplicate-board-tab')?.setAttribute('aria-label', `Duplicate ${item.name || 'My board'} board`);
     const dirty = session ? fileChanged(session) : false;
     tab.classList.toggle('has-file-changes', dirty);
     tab.title = `${item.file?.name || 'Saved in this browser'}${dirty ? ' · Unsaved file changes' : ''}`;
@@ -222,13 +223,15 @@ function newBoard() {
   switchBoard(id); saveNow();
 }
 
-async function duplicateBoard() {
+async function duplicateBoard(sourceId = activeSession.id) {
   if (workspaceBlocked || pdfExporting) return;
   document.activeElement?.blur(); saveNow(); closeMenu();
-  const snapshot = duplicateBoardSnapshot(board, workspace.boards.map(entry => entry.name));
-  const sourceKey = categoriesKey;
+  if (!workspace.boards.some(entry => entry.id === sourceId)) return;
+  const source = getSession(sourceId);
+  const snapshot = duplicateBoardSnapshot(source === activeSession ? board : source.board, workspace.boards.map(entry => entry.name));
+  const sourceKey = boardKeys(appKey, sourceId).categories;
   let copiedCategories;
-  try { copiedCategories = categoryFile || readCategoryCache(localStorage, sourceKey); }
+  try { copiedCategories = (source === activeSession ? categoryFile : null) || readCategoryCache(localStorage, sourceKey); }
   catch { /* The default list remains available if the cache is damaged. */ }
   const name = snapshot.name;
   const id = crypto.randomUUID(), keys = boardKeys(appKey, id);
@@ -252,16 +255,37 @@ async function duplicateBoard() {
   }
 }
 
-function closeBoardTab(id) {
+async function closeBoardTab(id) {
   if (workspaceBlocked || pdfExporting) return;
   if (fileTasks.has(id)) return toast('Wait for this board to finish saving.');
+  const session = getSession(id), entry = entryFor(session);
+  if (!entry) return;
+  const contents = session === activeSession ? board : session.board;
+  if (session.blocked || (entry.file ? fileChanged(session) : contents.notes.length > 0)) {
+    await restoreBoardHandle(session);
+    if (!workspace.boards.some(entry => entry.id === id)) return;
+    pendingCloseId = id;
+    $('close-board-name').textContent = entry.name || 'My board';
+    $('close-board-dialog').showModal();
+    return;
+  }
+  finishCloseBoard(id);
+}
+
+function finishCloseBoard(id) {
   const entry = workspace.boards.find(item => item.id === id);
+  if (!entry) return;
   if (id === activeSession.id) {
     const other = workspace.boards.find(item => item.open && item.id !== id);
     if (other) switchBoard(other.id); else newBoard();
     if (activeSession.id === id) return;
   }
-  entry.open = false; rememberWorkspace(); renderBoardTabs();
+  workspace.boards = workspace.boards.filter(item => item.id !== id);
+  sessions.delete(id); rememberWorkspace(); renderBoardTabs();
+  const keys = boardKeys(appKey, id);
+  try { localStorage.removeItem(keys.board); localStorage.removeItem(keys.categories); } catch { /* The closed board is no longer in the workspace. */ }
+  putCategoryHandle(keys.file, null).catch(() => {});
+  putCategoryHandle(keys.categories, null).catch(() => {});
   $('board-tabs').querySelector('[aria-selected=true]')?.focus({preventScroll: true});
 }
 
@@ -1829,13 +1853,31 @@ async function saveBoardFile(saveAs = false) {
     try { await putCategoryHandle(boardKeys(appKey, session.id).file, handle ? {token: entry.file.token, handle} : null); }
     catch { if (handle) toast('File saved. The link could not be remembered; use Save as next time.'); }
     if (session === activeSession) { saveNow(); toast(handle ? `Saved ${saved.name}.` : 'Board downloaded. This browser saves changes as a new download.'); }
+    return true;
   } catch (error) {
     if (error.name !== 'AbortError') toast(error.message || 'Could not save the board file.');
+    return false;
   } finally { fileTasks.delete(session.id); updateBoardFiles(); }
 }
 
 $('new-board').addEventListener('click', newBoard);
-$('duplicate-board').addEventListener('click', duplicateBoard);
+$('duplicate-board').addEventListener('click', () => duplicateBoard());
+$('cancel-close-board').addEventListener('click', () => { pendingCloseId = null; $('close-board-dialog').close(); });
+$('close-board-dialog').addEventListener('cancel', () => { pendingCloseId = null; });
+$('discard-close-board').addEventListener('click', () => {
+  const id = pendingCloseId; pendingCloseId = null; $('close-board-dialog').close();
+  if (id) finishCloseBoard(id);
+});
+$('save-close-board').addEventListener('click', async () => {
+  const id = pendingCloseId; pendingCloseId = null; $('close-board-dialog').close();
+  if (!id) return;
+  switchBoard(id);
+  if (await saveBoardFile()) {
+    const session = sessions.get(id);
+    if (session && fileChanged(session)) toast('File saved. Newer changes are still open.');
+    else finishCloseBoard(id);
+  }
+});
 $('all-boards-button').addEventListener('click', () => {
   const open = $('all-boards-menu').hidden;
   $('all-boards-menu').hidden = !open; $('all-boards-button').setAttribute('aria-expanded', String(open));
