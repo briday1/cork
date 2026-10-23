@@ -24,6 +24,7 @@ let placement = null;
 let pointer = null;
 let handMode = false;
 let selectMode = false;
+let selectionPointerId = null;
 let spaceHeld = false;
 let gesture = null;
 let categoryLoadFailed = false;
@@ -1008,11 +1009,24 @@ function fitView() {
 
 viewport.addEventListener('click', event => {
   const element = event.target.closest('.note');
+  const handledByPointer = element && selectionPointerId === element.dataset.noteId;
+  selectionPointerId = null;
   if (!element) return;
   if (stringMode) {
     event.preventDefault(); event.stopPropagation(); chooseStringItem(element.dataset.noteId);
   } else if (selectMode || event.shiftKey) {
     event.preventDefault(); event.stopPropagation();
+    // Keyboard and accessibility activation can dispatch a click without any
+    // pointer events. Pointer gestures already made the selection above.
+    if (!handledByPointer) {
+      document.activeElement?.blur(); viewport.focus({preventScroll: true});
+      const id = element.dataset.noteId;
+      if (selected.has(id)) selected.delete(id); else selected.add(id);
+      updateSelection();
+    }
+  } else if (!handledByPointer && !event.target.closest('.note-actions') && !handMode && !spaceHeld) {
+    const id = element.dataset.noteId;
+    if (!selected.has(id) || event.target.closest('textarea')) setSelected(id);
   }
 }, true);
 
@@ -1031,6 +1045,7 @@ function restoreBoxSelection() {
 }
 
 function cancelGesture() {
+  selectionPointerId = null;
   restoreBoxSelection(); clearGestureVisuals();
   if (gesture?.moved && ['notes', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type)) saveSoon();
   for (const id of activePointers.keys()) if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
@@ -1038,6 +1053,7 @@ function cancelGesture() {
 }
 
 viewport.addEventListener('pointerdown', event => {
+  selectionPointerId = null;
   if (event.target.closest('.board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
   if (event.button !== 0 && event.button !== 1) return;
   const noteElement = event.target.closest('.note');
@@ -1063,6 +1079,7 @@ viewport.addEventListener('pointerdown', event => {
     gesture = {type: 'place', pointerId: event.pointerId, start: point, moved: false}; viewport.setPointerCapture(event.pointerId); return;
   }
   const note = noteElement && board.notes.find(n => n.id === noteElement.dataset.noteId);
+  if (note && !pan) selectionPointerId = note.id;
   if (note && !pan && (selectMode || event.shiftKey)) {
     document.activeElement?.blur(); viewport.focus({preventScroll: true});
     event.preventDefault(); event.stopPropagation();
@@ -1161,6 +1178,7 @@ viewport.addEventListener('pointermove', event => {
 });
 
 function endGesture(event) {
+  setTimeout(() => { selectionPointerId = null; }, 0);
   activePointers.delete(event.pointerId);
   if (!gesture) return;
   if (gesture.type !== 'pinch' && event.pointerId !== gesture.pointerId) return;
