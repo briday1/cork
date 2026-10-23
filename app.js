@@ -668,6 +668,19 @@ function getImageResource(id) {
 }
 
 function wireNoteMovement(element, note, handle) {
+  if (note.type !== 'folder') {
+    // Stable variation: a paper's curl survives redraws, reloads and backups.
+    let seed = 2166136261;
+    for (const character of note.id) seed = Math.imul(seed ^ character.codePointAt(0), 16777619) >>> 0;
+    const size = note.type === 'image' ? 8 + seed % 5 : note.type === 'card' ? 11 + seed % 7 : 16 + seed % 9;
+    element.dataset.curl = seed & 1 ? 'left' : 'right';
+    element.style.setProperty('--curl-size', `${size}px`);
+    const curl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    curl.classList.add('paper-curl'); curl.setAttribute('viewBox', '0 0 24 24'); curl.setAttribute('aria-hidden', 'true');
+    const gradient = `curl-${seed}`;
+    curl.innerHTML = `<defs><linearGradient id="${gradient}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fffef8" stop-opacity=".95"/><stop offset=".48" stop-color="#fffef8" stop-opacity=".72"/><stop offset=".78" stop-color="#fffef8" stop-opacity=".28"/><stop offset="1" stop-color="#392718" stop-opacity=".2"/></linearGradient></defs><path d="M0 24 Q3 13 1 2 Q13 4 24 0 Z" fill="url(#${gradient})"/><path d="M1 2 Q13 4 24 0" fill="none" stroke="#fffef8" stroke-opacity=".65" stroke-width=".55"/>`;
+    element.append(curl);
+  }
   handle.addEventListener('keydown', event => {
     if (selectMode && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault(); event.stopPropagation();

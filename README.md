@@ -86,7 +86,7 @@ No category count is hard-coded. Maintainers can still edit the repository list 
 
 ## Appearance and color maps
 
-The board uses a bundled photograph of real cork. The grain moves and scales with the notes as you pan and zoom, and mirrored photo edges keep the surface continuous. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. Asset source and license are in [assets/README.md](./assets/README.md).
+The board uses a bundled photograph of real cork. The grain moves and scales with the notes as you pan and zoom, and mirrored photo edges keep the surface continuous. Board items cast soft shadows. Notes, index cards, and Polaroids have a small lifted lower corner, with a varied side and size that stays consistent across visits and board backups. Cards and photos curl less than sticky notes. Selected items use a bright, thick cyan outline. Index cards have white cardstock, a blank heading area, a red header rule, and blue lines that stay aligned as the title grows. PDF export keeps the paper detail and omits board shadows. Asset source and license are in [assets/README.md](./assets/README.md).
 
 At the bottom of the sidebar, choose **Natural cork**, **Pale cork**, or **Dark cork** and independently choose a category color map:
 

@@ -25,6 +25,7 @@ export function snapshotNotes(notes, elements) {
       width: `${width}px`, height: `${height}px`, maxWidth: 'none',
       boxShadow: 'none', outline: 'none', transition: 'none', margin: '0',
     });
+    clone.querySelectorAll('.folder-face, .folder-tab').forEach(part => { part.style.boxShadow = 'none'; });
     const pin = clone.querySelector('.pin');
     if (pin) pin.style.opacity = '1';
     return {id: note.id, type: note.type, x: note.x, y: note.y, tilt: note.tilt, width, height, originX, originY, element: clone};

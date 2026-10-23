@@ -530,3 +530,21 @@ body[data-theme=dark] .cork-texture { filter: saturate(.4) brightness(.46); }
 .note.polaroid .pin { top: 3px; }
 .note.manila-folder .pin { top: 9px; }
 .board-footer .view-controls { margin-left: auto; }
+
+/* A clipped paper surface and a small, curved underside lift one lower corner. */
+.note:not(.manila-folder) {
+  --paper-face: linear-gradient(175deg,#ffffff18,transparent 45%,#00000006),var(--note-color,#f2de9c);
+  --paper-shape: polygon(0 0,100% 0,100% calc(100% - var(--curl-size)),calc(100% - var(--curl-size)) 100%,0 100%);
+  background: none; border: 0;
+  box-shadow: 0 1px 3px #3b241336,2px 8px 13px -3px #3b241342;
+}
+.note[data-curl=left] { --paper-shape: polygon(0 0,100% 0,100% 100%,var(--curl-size) 100%,0 calc(100% - var(--curl-size))); }
+.note:not(.manila-folder):before { content: ''; position: absolute; inset: 0; background: var(--paper-face); clip-path: var(--paper-shape); pointer-events: none; z-index: 0; }
+.paper-curl { position: absolute; right: 0; bottom: 0; width: var(--curl-size); height: var(--curl-size); fill: none; stroke: none; pointer-events: none; z-index: 2; }
+.note[data-curl=left]>.paper-curl { right: auto; left: 0; transform: scaleX(-1); }
+.note.index-card { --paper-face: #fffef8; box-shadow: 0 2px 3px #3b24132e,3px 10px 17px -5px #3b241345; }
+.index-card:after { clip-path: var(--paper-shape); }
+.note.polaroid { --paper-face: #fffefa; box-shadow: 0 2px 4px #3825153d,4px 12px 20px -5px #3825154d; }
+.folder-tab { box-shadow: 1px 2px 3px #3b241326; }
+.folder-face { box-shadow: 0 2px 3px #3b24132e,3px 9px 15px -4px #3b241347; }
+.note:not(.manila-folder).is-dragging { box-shadow: 0 3px 5px #3825153d,5px 17px 24px -5px #38251555; }
