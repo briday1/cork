@@ -4,7 +4,7 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 [Open Cork](https://briday1.github.io/cork/)
 
-![Cork with a minimal sidebar, board tabs, sticky notes, and a flat index card](./docs/cork-board.jpg)
+![Current Cork interface with a minimal sidebar, board tabs, sticky notes, a flat index card, and yarn connections](./docs/cork-board.jpg?v=5f3bd7e7f0e9)
 
 **Plain HTML, CSS, and JavaScript. No backend, accounts, API keys, or install step required.** GitHub Pages serves the same static files that run locally.
 
@@ -19,7 +19,7 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 **Select multiple items:** Shift-click to add or remove notes, cards, photos, folders, or strings from the selection. The **Select tool** beside the hand tool also lets you click to toggle items or drag a box across the cork. Hold Shift while drawing another box to add to the selection. Drag a selected item in Select mode, or its top edge in normal mode, to move the selected papers together; strings follow their pins. Arrow keys on a selected item’s move handle move the whole group. Use **Delete selected elements** (or Delete/Backspace) to remove the selection and any attached strings in one undoable change. **Clear selection** clears the group; Escape also exits Select mode. Hold Space to pan temporarily without losing your selection.
 
-![Selected notes with separate heading and body typography controls.](./docs/cork-selection.jpg)
+![Group-selected notes with separate heading and body typography controls and a cyan selected connection.](./docs/cork-selection.jpg?v=5141dc7041ce)
 
 Use **Find a category** to search the scrollable list. The sidebar works with 100 or more categories. **Random category** picks from the entire category file, even when a search is active, and avoids immediately repeating the currently attached category when there is a choice.
 
@@ -30,6 +30,8 @@ Use **Find a category** to search the scrollable list. The sidebar works with 10
 **String** connects two different items. Click String, then the first item and the second. Red yarn joins their thumbtacks and follows them as you move, resize, pan, and zoom. Press Escape to cancel. Select a string and press Delete to remove it, or use Undo. Deleting an item also removes its strings; Undo restores both. Connections save with the board and appear in PDF exports.
 
 Photos and folders keep a visible thumbtack even without a connection.
+
+![Notes and yarn connections with the sidebar collapsed.](./docs/cork-full-board.jpg?v=cf7320fa1ee9)
 
 In the sidebar’s **⋯** menu, **Export PDF** downloads one page cropped closely around all board items, including items outside the current view. It preserves their arrangement and rotation, uses lossless 4× rendering (384 dpi at original size), and leaves out cork, controls, selection outlines, and shadows. The page has no background fill; most PDF viewers display it as white. Paper colors and photo frames remain. Very large individual notes use a lower capture scale to respect browser canvas limits. The PDF is image-based, so text is not selectable.
 
@@ -69,7 +71,7 @@ The copy icon beside each board in the top list (or in **All boards**) duplicate
 
 Load a categories `.txt` file independently for each tab, or keep the repository default. Two boards can deliberately use the same categories file. Opening a board file that is already linked brings its existing tab forward. Close a tab with its ×. Closed boards are removed from the list and are not remembered. Cork offers Save and close, Close without saving, and Cancel when the board has unsaved content. Closing a tab does not delete a local file. For a portable setup, keep each board `.json` together with its categories `.txt`; choose that pair once in a new browser.
 
-![Dark interface with the searchable All boards menu showing open boards.](./docs/cork-dark-boards.jpg)
+![Dark interface, blue paper background, and the searchable board list with a duplicate action.](./docs/cork-dark-boards.jpg?v=ec0ecb5465a0)
 
 ## Text style
 
@@ -93,6 +95,8 @@ Something completely different
 
 Prefix a line with `*` (with or without a space) to put that category in **Frequently used** at the top of the list. The marker is hidden from labels and notes. Other categories appear below. Searching filters both groups, and Random category still uses the entire list. Marking a category does not change its color or position in the underlying category order.
 
+![Category search with frequently used notes and local categories file controls.](./docs/cork-categories.jpg?v=52639ff73deb)
+
 The browser remembers a copy of your loaded list across visits. Where the browser supports linking local files, Cork also remembers the file handle and checks for edits on startup and when you return to the tab. If file permission expires, the saved list keeps working; **Refresh** lets you allow access again. In other browsers, **Reload file…** asks you to select the edited file again. You do not need to reload an unchanged list on every visit. **Use default** switches back to the repository list without changing your notes. Your local file is only read, never overwritten or uploaded. Clearing this site’s browser data removes the saved copy and file link.
 
 Keep two files for a portable setup: your **categories `.txt`** (usually changed rarely) and your **board `.json`** from Save or Download board copy. The board contains the notes and original images; the categories file is separate. When moving to another browser or device, open the board and load its categories once. A selected categories file is limited to 1 MB.
@@ -109,7 +113,7 @@ The board uses a bundled photograph of real cork. The grain moves and scales wit
 
 Use **Appearance** at the bottom of the sidebar to choose **System**, **Light**, or **Dark** for the interface. System is the default and follows operating-system changes; a manual choice stays remembered across board tabs. The paper-like sidebar uses plain text controls and small tool icons. The board menu holds file actions. For the board background, choose **Natural cork**, **Pale cork**, **Dark cork**, or textured construction paper in **Cream**, **Sage**, or **Blue**. Paper grain and fibers are generated from board coordinates, with different detail across the surface instead of a repeating image. The texture moves and scales with the board, and renders at the current zoom and display resolution. Each board remembers its background, including in saved board files and duplicates. PDF export omits either background. Independently choose a category color map:
 
-![Sage construction paper with procedural grain that moves and scales with the board.](./docs/cork-paper.jpg)
+![Sage construction paper with procedural grain that moves and scales with the board.](./docs/cork-paper.jpg?v=3f76f0a72020)
 
 | Color map | Character |
 | --- | --- |
