@@ -7,6 +7,8 @@ import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp
 import {readBoardFile, writeBoardFile} from './board-file.js';
 import {resizePaper} from './paper-core.js';
 import {PAPER_TILE_SIZE, paperResolution, paintPaperTile} from './paper-texture.js';
+import {GoogleDrive, DriveAuthError} from './google-drive.js';
+import {googleDriveConfig} from './google-drive-config.js';
 
 const $ = id => document.getElementById(id);
 const viewport = $('viewport');
@@ -22,6 +24,8 @@ let workspace, activeSession, workspaceBlocked = false;
 const sessions = new Map(), fileTasks = new Set();
 let textTarget = 'new', textSelection = '';
 let openingBoard = false, categoryPickSession = null, imagePickSession = null, folderPickSession = null;
+let driveBusy = false, driveReady = false, driveMessage = '', driveListRevision = 0;
+const drive = new GoogleDrive(googleDriveConfig, {onChange: () => { if (!drive.connected) driveMessage = ''; updateBoardFiles(); }});
 let pendingCloseId = null;
 let board = blankBoard();
 let categories = [];
@@ -163,7 +167,7 @@ function updateBoardFiles() {
     tab.classList.toggle('has-file-changes', dirty);
     tab.title = `${item.file?.name || 'Saved in this browser'}${dirty ? ' · Unsaved file changes' : ''}`;
   }
-  $('board-file-name').textContent = entry.file?.name || 'Browser only';
+  $('board-file-name').textContent = entry.file ? `${entry.file.kind === 'drive' ? 'Drive · ' : ''}${entry.file.name}` : 'Browser only';
   document.querySelector('.board-file-line').hidden = !entry.file;
   $('save-board').classList.toggle('has-changes', fileChanged());
   $('board-file-name').title = entry.file ? `${entry.file.name}${fileChanged() ? ' · Unsaved file changes' : ''}` : 'Save to choose a local board JSON file';
@@ -173,13 +177,14 @@ function updateBoardFiles() {
   $('new-board').disabled = workspaceBlocked || pdfExporting;
   $('duplicate-board').disabled = workspaceBlocked || pdfExporting;
   $('open-board').disabled = workspaceBlocked || openingBoard || pdfExporting;
+  updateDriveControls();
 }
 
 async function restoreBoardHandle(session) {
   if (session.handleReady) return;
   try {
     const file = entryFor(session).file;
-    if (file) {
+    if (file && file.kind !== 'drive') {
       const saved = await getCategoryHandle(boardKeys(appKey, session.id).file);
       if (saved?.token === file.token) session.handle = saved.handle;
     }
@@ -306,7 +311,8 @@ function setSaveStatus(text, error = false) {
 }
 
 function showSavedStatus() {
-  setSaveStatus(fileChanged() ? 'Browser saved · File has changes' : 'Saved in this browser');
+  const destination = entryFor()?.file?.kind === 'drive' ? 'Drive' : 'File';
+  setSaveStatus(fileChanged() ? `Browser saved · ${destination} has changes` : 'Saved in this browser');
 }
 
 function saveNow() {
@@ -1831,6 +1837,7 @@ async function chooseBoardFiles() {
 
 async function saveBoardFile(saveAs = false) {
   const session = activeSession, entry = entryFor(session);
+  if (!saveAs && entry.file?.kind === 'drive') return saveDriveBoard();
   if (fileTasks.has(session.id) || !session.handleReady) return;
   session.board = board;
   const snapshot = validateBoard(JSON.parse(JSON.stringify(board)));
@@ -1870,6 +1877,167 @@ async function saveBoardFile(saveAs = false) {
     return false;
   } finally { fileTasks.delete(session.id); updateBoardFiles(); }
 }
+
+function updateDriveControls() {
+  const connected = drive.connected, linked = entryFor()?.file?.kind === 'drive';
+  const blocked = driveBusy || openingBoard || workspaceBlocked || savingBlocked || pdfExporting || fileTasks.has(activeSession.id);
+  $('drive-status').textContent = driveMessage || (!drive.configured
+    ? 'Google Drive has not been enabled for this site yet. Your boards are still saved in this browser.'
+    : connected ? `Connected as ${drive.user.displayName || drive.user.emailAddress || 'your Google account'}.`
+    : 'Connect to open or save Cork boards in your Google Drive.');
+  $('drive-connect').hidden = connected || !drive.configured;
+  $('drive-connect').disabled = !driveReady || driveBusy;
+  $('drive-connect').textContent = drive.user ? 'Reconnect Google Drive' : 'Connect Google Drive';
+  $('drive-disconnect').hidden = !drive.user;
+  $('drive-disconnect').disabled = driveBusy;
+  $('drive-setup').hidden = drive.configured;
+  $('drive-save').hidden = !drive.configured;
+  $('drive-save').disabled = !connected || blocked;
+  $('drive-save').textContent = linked ? 'Save changes to Drive' : 'Save this board to Drive';
+  $('drive-save-copy').hidden = !linked || !drive.configured;
+  $('drive-save-copy').disabled = !connected || blocked;
+  $('drive-files-section').hidden = !connected;
+  $('drive-refresh').disabled = blocked;
+  $('drive-pick').hidden = !drive.pickerConfigured;
+  $('drive-pick').disabled = !connected || blocked;
+  for (const button of $('drive-files').querySelectorAll('button')) button.disabled = blocked;
+  if (!connected) { driveListRevision++; $('drive-files').replaceChildren(); }
+}
+
+async function openDriveDialog() {
+  document.activeElement?.blur(); saveNow(); closeMenu(); closeAllBoards();
+  driveMessage = ''; updateDriveControls();
+  if (!$('drive-dialog').open) $('drive-dialog').showModal();
+  if (!drive.configured) return;
+  try {
+    await drive.ready(); driveReady = true; updateDriveControls();
+    if (drive.connected && !driveBusy) await refreshDriveBoards();
+  } catch (error) { driveMessage = error.message; updateDriveControls(); }
+}
+
+async function refreshDriveBoards(pageToken = '') {
+  if (!drive.connected || driveBusy) return;
+  const revision = ++driveListRevision;
+  driveBusy = true; updateDriveControls();
+  if (!pageToken) $('drive-files').replaceChildren();
+  try {
+    const result = await drive.listBoards(pageToken);
+    if (revision !== driveListRevision || !drive.connected) return;
+    $('drive-files').querySelector('.drive-more')?.remove();
+    for (const file of result.files || []) {
+      const button = document.createElement('button'); button.className = 'drive-file';
+      const label = document.createElement('span'); label.textContent = file.name;
+      const date = document.createElement('small'); date.textContent = new Date(file.modifiedTime).toLocaleDateString();
+      button.append(icon('card'), label, date); button.addEventListener('click', () => openDriveBoard(file.id));
+      $('drive-files').append(button);
+    }
+    if (!$('drive-files').childElementCount) {
+      const empty = document.createElement('p'); empty.textContent = 'No Cork boards in this Drive yet. Save this board to add one.';
+      $('drive-files').append(empty);
+    }
+    if (result.nextPageToken) {
+      const more = document.createElement('button'); more.className = 'drive-more'; more.textContent = 'Load more boards';
+      more.addEventListener('click', () => refreshDriveBoards(result.nextPageToken)); $('drive-files').append(more);
+    }
+  } catch (error) { driveMessage = error.message; }
+  finally { driveBusy = false; updateDriveControls(); }
+}
+
+async function openDriveBoard(fileId) {
+  if (driveBusy || openingBoard || workspaceBlocked || pdfExporting) return;
+  const existing = workspace.boards.find(entry => entry.file?.kind === 'drive' && entry.file.id === fileId && entry.file.accountId === drive.user?.permissionId);
+  const previousSession = existing ? getSession(existing.id) : null;
+  if (previousSession && (previousSession.blocked || fileChanged(previousSession))) {
+    $('drive-dialog').close(); switchBoard(existing.id);
+    return toast('This board is already open with browser changes. Save a Drive copy to keep them before reopening the latest file.');
+  }
+  const previousStamp = previousSession && boardStamp(previousSession === activeSession ? board : previousSession.board);
+  openingBoard = true; driveBusy = true; driveMessage = 'Opening board…'; updateBoardFiles();
+  try {
+    const remote = await drive.openBoard(fileId), loaded = await readBoardFile(remote.file);
+    const assets = await importImages(loaded.data, loaded.board);
+    for (const asset of assets) await putImage(asset);
+    if (workspaceBlocked || (previousSession && (!entryFor(previousSession) || previousSession.blocked || previousStamp !== boardStamp(previousSession === activeSession ? board : previousSession.board)))) throw new Error('The browser board changed while opening. Its changes have been kept; try again.');
+    const id = existing?.id || crypto.randomUUID(), keys = boardKeys(appKey, id);
+    const file = {...remote.record, token: crypto.randomUUID(), stamp: boardStamp(loaded.board)};
+    localStorage.setItem(keys.board, JSON.stringify(loaded.board));
+    const session = previousSession || {id, handleReady: true};
+    Object.assign(session, {board: loaded.board, undo: [], redo: [], blocked: false, handle: null, handleReady: true});
+    sessions.set(id, session);
+    if (existing) Object.assign(existing, {name: loaded.board.name, file});
+    else workspace.boards.push({id, name: loaded.board.name, open: true, file});
+    if (session === activeSession) {
+      cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false);
+      board = session.board; undoStack = session.undo; redoStack = session.redo;
+      selected.clear(); selectedStrings.clear(); renderBoard(); updateHistory(); renderBoardTabs(); saveNow();
+    } else { switchBoard(id); saveNow(); }
+    $('drive-dialog').close(); driveMessage = ''; toast(`Opened ${file.name} from Drive.`);
+  } catch (error) { driveMessage = error.message; toast(error.message); }
+  finally { openingBoard = false; driveBusy = false; updateBoardFiles(); }
+}
+
+async function saveDriveBoard(saveCopy = false) {
+  const session = activeSession, entry = entryFor(session);
+  if (driveBusy || fileTasks.has(session.id) || workspaceBlocked || savingBlocked || pdfExporting) return false;
+  document.activeElement?.blur(); saveNow(); closeMenu();
+  if (!drive.connected) {
+    await openDriveDialog();
+    driveMessage = 'Connect Google Drive, then save the board. Your browser changes have been kept.';
+    updateDriveControls(); return false;
+  }
+  const snapshot = validateBoard(JSON.parse(JSON.stringify(board)));
+  const previous = !saveCopy && entry.file?.kind === 'drive' ? entry.file : null;
+  const baseName = snapshot.name.replace(/[^a-z0-9 _-]/gi, '').trim() || 'cork-board';
+  const name = `${baseName}${saveCopy ? ' copy' : ''}.json`;
+  let saved = false;
+  fileTasks.add(session.id); driveBusy = true; driveMessage = 'Saving board to Drive…'; updateBoardFiles();
+  try {
+    const contents = await boardBlob(snapshot);
+    const record = await drive.saveBoard(contents, name, previous);
+    entry.file = {...record, token: crypto.randomUUID(), stamp: boardStamp(snapshot)};
+    session.handle = null;
+    rememberWorkspace();
+    try { await putCategoryHandle(boardKeys(appKey, session.id).file, null); } catch { /* Workspace already identifies Drive as the destination. */ }
+    if (session === activeSession) saveNow();
+    saved = true; driveMessage = `Saved ${record.name} to Drive.`; toast(driveMessage);
+  } catch (error) {
+    driveMessage = error.message; toast(error.message);
+    if (error instanceof DriveAuthError && !$('drive-dialog').open) {
+      await openDriveDialog(); driveMessage = error.message;
+    }
+  } finally {
+    fileTasks.delete(session.id); driveBusy = false; updateBoardFiles();
+    if (saved && $('drive-dialog').open) await refreshDriveBoards();
+  }
+  return saved;
+}
+
+$('google-drive').addEventListener('click', openDriveDialog);
+$('drive-close').addEventListener('click', () => $('drive-dialog').close());
+$('drive-connect').addEventListener('click', async () => {
+  driveMessage = ''; driveBusy = true; updateDriveControls();
+  try { await drive.authorize(); }
+  catch (error) { driveMessage = error.message; }
+  finally { driveBusy = false; updateDriveControls(); }
+  if (drive.connected) await refreshDriveBoards();
+});
+$('drive-disconnect').addEventListener('click', () => {
+  if (driveBusy) return;
+  drive.disconnect(); driveMessage = 'Google Drive disconnected. Local board copies have been kept.'; updateDriveControls();
+});
+$('drive-refresh').addEventListener('click', () => refreshDriveBoards());
+$('drive-save').addEventListener('click', () => saveDriveBoard());
+$('drive-save-copy').addEventListener('click', () => saveDriveBoard(true));
+$('drive-pick').addEventListener('click', async () => {
+  if (driveBusy) return;
+  driveBusy = true; updateDriveControls(); $('drive-dialog').close();
+  let fileId;
+  try { fileId = await drive.pickBoard(); }
+  catch (error) { driveMessage = error.message; }
+  finally { driveBusy = false; updateDriveControls(); }
+  if (fileId) await openDriveBoard(fileId);
+  else if (!$('drive-dialog').open) $('drive-dialog').showModal();
+});
 
 $('new-board').addEventListener('click', newBoard);
 $('duplicate-board').addEventListener('click', () => duplicateBoard());

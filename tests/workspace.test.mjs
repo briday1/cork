@@ -61,6 +61,17 @@ test('broken tab lists and broken boards remain untouched for recovery', () => {
   assert.throws(() => readWorkspace(cache, 'base'), /tabs/);
 });
 
+test('Drive file destinations survive reload without persisting authorization', () => {
+  const cache = storage(), base = 'cork:/one/', workspace = readWorkspace(cache, base);
+  workspace.boards[0].file = {kind: 'drive', id: 'board-file-id', accountId: 'account-a', version: '9', etag: 'revision', name: 'Board.json', token: 'link-marker', stamp: 'saved', modified: 42, size: 100};
+  writeWorkspace(cache, base, workspace);
+  assert.deepEqual(readWorkspace(cache, base), workspace);
+  assert.ok(!cache.getItem(`${base}:workspace`).includes('access_token'));
+  workspace.boards[0].file.version = 'not-a-version';
+  writeWorkspace(cache, base, workspace);
+  assert.throws(() => readWorkspace(cache, base), /Google Drive/);
+});
+
 test('file-change comparisons recognize edits, undo, and camera changes', () => {
   const board = blankBoard(), original = boardStamp(board);
   const copy = structuredClone(board);
