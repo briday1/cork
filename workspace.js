@@ -18,6 +18,8 @@ export function readWorkspace(storage, base) {
     ids.add(entry.id);
     const file = entry.file;
     if (file && (typeof file.name !== 'string' || !file.name || typeof file.token !== 'string' || typeof file.stamp !== 'string' || !Number.isFinite(file.modified) || !Number.isFinite(file.size))) throw new Error('A saved board file link could not be read.');
+    if (file?.kind && file.kind !== 'drive') throw new Error('A saved board file destination could not be read.');
+    if (file?.kind === 'drive' && (typeof file.id !== 'string' || !/^[\w-]{1,200}$/.test(file.id) || typeof file.accountId !== 'string' || !file.accountId || typeof file.version !== 'string' || !/^\d+$/.test(file.version) || (file.etag !== undefined && typeof file.etag !== 'string'))) throw new Error('A saved Google Drive file link could not be read.');
     return {id: entry.id, name: entry.name.slice(0, 80), open: entry.open, file: file ? {...file} : null};
   });
   if (!boards.some(entry => entry.id === value.activeId && entry.open)) throw new Error('The active board tab could not be read.');

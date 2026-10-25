@@ -6,7 +6,7 @@ A cork board for notes, index cards, Polaroid photos, and local folder links. An
 
 ![Current Cork interface with a minimal sidebar, board tabs, sticky notes, a flat index card, and yarn connections](./docs/cork-board.jpg?v=5f3bd7e7f0e9)
 
-**Plain HTML, CSS, and JavaScript. No backend, accounts, API keys, or install step required.** GitHub Pages serves the same static files that run locally.
+**Plain HTML, CSS, and JavaScript. No backend or install step required.** Use Cork locally without an account. Optional Google Drive support uses Google's browser authorization after the site owner configures it. GitHub Pages still serves static files.
 
 ## Use the board
 
@@ -73,6 +73,29 @@ Load a categories `.txt` file independently for each tab, or keep the repository
 
 ![Dark interface, blue paper background, and the searchable board list with a duplicate action.](./docs/cork-dark-boards.jpg?v=ec0ecb5465a0)
 
+## Google Drive
+
+Use **⋯ → Google Drive…** to connect a Google account, save the current board, or open a previously saved Cork board. Each board is an ordinary JSON file in your Drive, including its original images, layout, and text styles. A local categories file and local folder permissions stay on your device; load or reconnect them separately on another device. The Drive list contains only files available to Cork under its per-file permission. If the optional Google Picker is configured, **Choose another Drive file…** also lets you explicitly select an existing board JSON file.
+
+After saving or opening a Drive board, **Save** and **Ctrl/Cmd+S** update that linked Drive file. **Save a Drive copy** creates a separate file and links the current tab to it; the previous Drive file remains intact. **Save as…** selects a local file instead. Duplicating a board starts an independent board without a linked destination.
+
+Browser saving continues automatically; Drive writes happen only when you use Save. Access tokens remain in memory and expire. Use **Reconnect Google Drive** when needed; saved browser copies and pending edits remain available. Disconnect revokes the current grant when Google is reachable and clears authorization in Cork, without deleting local or Drive boards. A fresh page visit requires connecting again for Drive operations.
+
+Cork checks the remote file version before updating it, supplies an HTTP precondition when Drive exposes an ETag, and refuses to overwrite a version it knows has changed. **Save a Drive copy** preserves both versions. This is file saving, not real-time collaboration or automatic merging; avoid simultaneous editing of one file on multiple devices. Opening an already-open board with unsaved browser changes keeps that copy rather than replacing it. Opening a clean board again loads its latest Drive version.
+
+### Enable Google Drive
+
+The integration is included but remains inactive until the site owner supplies a Google OAuth client. Unconfigured copies make no Google requests and keep local saving available. This setup does not require a backend or a client secret.
+
+1. Create or select a dedicated **Cork** project in Google Cloud. Enable the **Google Drive API**.
+2. Configure the Google Auth Platform consent screen with the app name **Cork**, a monitored support email, the homepage `https://briday1.github.io/cork/about.html`, and privacy policy `https://briday1.github.io/cork/privacy.html`. Request only `https://www.googleapis.com/auth/drive.file`. For initial testing, select an external testing audience and explicitly add the test accounts. Complete any branding/domain-verification requirements Google presents before opening access more broadly.
+3. Create an OAuth client of type **Web application**. Add `https://briday1.github.io` as an **Authorized JavaScript origin**. Origins do not include the `/cork/` path. Add `http://localhost:8000` separately only if local testing is needed. This popup token flow does not use a server-side redirect or client secret.
+4. Copy the public client ID into `clientId` in [`google-drive-config.js`](./google-drive-config.js), then commit and deploy. Never add an OAuth client secret, refresh token, or access token to this repository.
+5. Optional: enable the **Google Picker API**, create a browser API key restricted to that API and the `https://briday1.github.io/cork/*` HTTP referrer, and set `apiKey` plus the numeric Cloud project number in `appId`. Use credentials from the same project as the OAuth client. This enables choosing pre-existing board files; saving and reopening Cork-created files need only the OAuth client ID.
+6. After deployment, connect a test account, save a board with a photo, reopen it in another browser, edit and save, and verify the original browser refuses a stale overwrite. Test declined consent, reconnect, and disconnect before changing the consent audience to production.
+
+Google documentation: [browser token authorization](https://developers.google.com/identity/oauth2/web/guides/use-token-model), [recommended per-file Drive permission](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), and [Google Picker](https://developers.google.com/workspace/drive/picker/guides/overview).
+
 ## Text style
 
 Use **Text** at the bottom of the sidebar to open the text settings. Choose **New notes** to set defaults, or **Selected notes** to change one note or a group. The **Text** button beside the selection controls opens the same settings. Heading and body have separate **Sans**, **Serif**, or **Mono** fonts, sizes, and weights. Changing one setting leaves the other settings alone. New notes use the usual paper sizes until you enter a size. Selected notes show their current sizes; clear a size to restore the usual size for that type of paper. **Reset** restores the standard style for the chosen target. Mixed selections keep their differences until you change that field.
@@ -131,13 +154,13 @@ Colors are sampled across the category count in file order. HSV excludes the dup
 
 The board automatically saves notes, positions, widths, heights, theme, color map, board name, and view to **localStorage in your current browser on this device**. Original images, photo previews, and local folder handles use IndexedDB so images do not fill the smaller localStorage quota. The save indicator reports browser-storage failures rather than claiming the board was saved.
 
-- Notes are **not** written back into the repository and are **not** shared with other visitors or other devices.
+- Notes are **not** written back into the repository or shared with other visitors. Choosing to save a board to Google Drive makes that file available through your Drive account and its existing sharing settings.
 - Clearing site data, private-browsing cleanup, or moving to another browser/origin can remove or separate the saved board.
 - Use **Save** or the sidebar’s **⋯ → Download board copy** for a JSON backup including original images. **Open board files** validates each file and opens it in a separate tab. Existing boards stay open. Folder handles are specific to a browser/device and are reconnected with the system picker when necessary.
 - If another tab changes the same board, this tab pauses saving to avoid overwriting it. Export this tab’s copy if needed, then reload to use the saved board.
 - A damaged stored board is left untouched and automatic saving pauses. Recover the original storage before intentionally clearing the damaged copy.
 
-This is a personal, browser-local board. There is no server-side storage, collaboration, telemetry, or third-party asset loading.
+This is a personal board with browser-local saving and optional Google Drive files. Cork has no backend storage, collaboration, or telemetry. Google's authorization and picker libraries load only when you choose the configured Drive integration; Drive files transfer directly between the browser and Google.
 
 ## Publish on GitHub Pages
 
@@ -175,6 +198,9 @@ The `dist/` build copies the public files and stamps their URLs with a content v
 | `index.html` | Accessible application shell and built-in help |
 | `styles.css` | Cork, paper, responsive layouts, and themes |
 | `app.js` | Placement, cursor preview, dragging, editing, pan/zoom, saving, export/import |
+| `google-drive.js` | Optional browser-only Drive authorization, file selection, uploads, and version checks |
+| `google-drive-config.js` | Public OAuth client ID and optional restricted Picker configuration |
+| `about.html`, `privacy.html` | Public app description and privacy policy for Google consent setup |
 | `board-core.js` | Category parsing, color maps, coordinate transforms, import validation, list continuation |
 | `paper-texture.js` | Procedural paper grain and fibers at board coordinates, with zoom- and display-aware rendering |
 | `image-store.js` | Browser-local image originals, thumbnails, folder handles, and image backups |
