@@ -705,6 +705,9 @@ body[data-ui-theme=dark] { color-scheme:dark; --rail-bg:#242520; --rail-ink:#d6d
 .board-heading input:hover { box-shadow:none; }
 .board-heading input:focus { box-shadow:0 1px 0 var(--rail-accent); }
 .save-status { grid-column:1/-1; grid-row:2; position:static; width:auto; height:auto; overflow:visible; clip-path:none; font-size:9px; line-height:1.5; color:var(--rail-muted); }
+.save-status-line { grid-column:1/-1; grid-row:2; display:flex; align-items:center; flex-wrap:wrap; gap:2px 7px; }
+#drive-reconnect { padding:4px 0; min-height:30px; color:var(--rail-accent); font-size:10px; text-decoration:underline; text-underline-offset:2px; }
+@media (pointer:coarse) { #drive-reconnect { min-height:44px; } }
 .save-status.is-error { position:static; width:auto; height:auto; clip-path:none; margin-top:7px; line-height:1.5; }
 .board-tools { grid-column:2; grid-row:1; margin:0; gap:0; }
 .board-tools .note-count { display:none; }

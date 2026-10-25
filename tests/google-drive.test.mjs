@@ -6,17 +6,17 @@ const config = {clientId: '12345-cork.apps.googleusercontent.com', apiKey: '', a
 const info = (version = '1', overrides = {}) => ({id: 'board-id', name: 'Board.json', size: '20', modifiedTime: '2026-10-25T16:00:00.000Z', version, capabilities: {canEdit: true}, ...overrides});
 const json = (data, headers = {}) => new Response(JSON.stringify(data), {headers: {'Content-Type': 'application/json', ...headers}});
 
-async function connected(responses = [], {clock = () => 1000, storage, sessionKey} = {}) {
+async function connected(responses = [], {clock = () => 1000, storage, sessionKey, accountStorage, user = {permissionId: 'account-a', displayName: 'Test writer'}} = {}) {
   const requests = []; let tokenOptions, authOptions, revoked;
   const identity = {
     initTokenClient(options) { tokenOptions = options; return {requestAccessToken(options) { authOptions = options; queueMicrotask(() => tokenOptions.callback({access_token: 'test-token', expires_in: 3600, scope: DRIVE_SCOPE})); }}; },
     revoke(token) { revoked = token; },
   };
   const client = new GoogleDrive(config, {
-    now: clock, identity: () => identity, storage, sessionKey,
+    now: clock, identity: () => identity, storage, sessionKey, accountStorage,
     fetch: async (url, options) => {
       requests.push({url, ...options});
-      if (url.includes('/about?')) return json({user: {permissionId: 'account-a', displayName: 'Test writer'}});
+      if (url.includes('/about?')) return json({user});
       assert.ok(responses.length, `Unexpected request: ${url}`);
       const response = responses.shift();
       if (response instanceof Error) throw response;
@@ -144,6 +144,87 @@ test('reconnecting a remembered account uses the supported Google login hint', a
   assert.equal(auth.authOptions.prompt, '');
   assert.equal(auth.authOptions.login_hint, 'writer@example.test');
   assert.equal(auth.authOptions.hint, undefined);
+});
+
+test('an expired-token reload remembers the account but waits for a click to request new access', async () => {
+  const session = tabStorage(), accounts = tabStorage();
+  const auth = await connected([], {storage: () => session, accountStorage: () => accounts, user: {permissionId: 'account-a', emailAddress: 'writer@example.test'}});
+  const hint = JSON.parse(accounts.getItem(`${auth.client.sessionKey}:account`));
+  assert.deepEqual(hint, {version: 1, clientId: config.clientId, emailAddress: 'writer@example.test'});
+  assert.ok(!JSON.stringify(hint).includes('test-token'), 'persistent account hints cannot contain access tokens');
+  let requests = 0, prompts = 0, options, callback;
+  const client = reloadedClient(session, async () => { requests++; return json({user: {permissionId: 'account-a', emailAddress: 'writer@example.test'}}); }, {
+    now: () => 3601000, accountStorage: () => accounts,
+    identity: () => ({initTokenClient(config) { callback = config.callback; return {requestAccessToken(value) { prompts++; options = value; queueMicrotask(() => callback({access_token: 'renewed-token', expires_in: 3600, scope: DRIVE_SCOPE})); }}; }}),
+  });
+  assert.equal(await client.restore(), null);
+  await client.ready();
+  assert.equal(client.remembered, true); assert.equal(client.connected, false); assert.equal(client.user, null);
+  assert.equal(prompts, 0); assert.equal(requests, 0);
+  await assert.rejects(client.listBoards(), DriveAuthError);
+  assert.equal(requests, 0, 'an account hint alone cannot authorize API calls');
+  await client.authorize();
+  assert.equal(options.prompt, ''); assert.equal(options.login_hint, 'writer@example.test');
+  assert.equal(prompts, 1); assert.equal(requests, 1); assert.equal(client.connected, true);
+});
+
+test('a new tab can reuse the account hint without reusing another tab’s credentials', async () => {
+  const accounts = tabStorage();
+  const auth = await connected([], {accountStorage: () => accounts, user: {permissionId: 'account-a', emailAddress: 'writer@example.test'}});
+  const client = reloadedClient(tabStorage(), () => assert.fail('A remembered account cannot make Drive requests'), {accountStorage: () => accounts});
+  assert.equal(await client.restore(), null);
+  assert.equal(client.remembered, true); assert.equal(client.loginHint, 'writer@example.test');
+  assert.equal(client.connected, false); assert.equal(client.token, '');
+  auth.client.disconnect();
+  const afterDisconnect = reloadedClient(tabStorage(), () => assert.fail('Disconnect must not sign in again'), {accountStorage: () => accounts});
+  assert.equal(afterDisconnect.remembered, false); assert.equal(await afterDisconnect.restore(), null);
+});
+
+test('token expiry clears credentials and updates the UI without attempting automatic renewal', async context => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const session = tabStorage(), accounts = tabStorage();
+  let time = 1000, prompts = 0, changes = 0;
+  const client = new GoogleDrive(config, {
+    storage: () => session, accountStorage: () => accounts, now: () => time, onChange: () => changes++,
+    identity: () => ({initTokenClient: options => ({requestAccessToken() { prompts++; queueMicrotask(() => options.callback({access_token: 'test-token', expires_in: 3600, scope: DRIVE_SCOPE})); }})}),
+    fetch: async () => json({user: {permissionId: 'account-a', emailAddress: 'writer@example.test'}}),
+  });
+  await client.ready(); await client.authorize();
+  time = client.expiresAt; context.mock.timers.tick(3570000);
+  assert.equal(prompts, 1); assert.equal(changes, 2);
+  assert.equal(client.connected, false); assert.equal(client.remembered, true);
+  assert.equal(session.getItem(client.sessionKey), null); assert.ok(accounts.getItem(`${client.sessionKey}:account`));
+});
+
+test('account hints are scoped to the site path and OAuth client and tolerate blocked storage', async () => {
+  const accounts = tabStorage();
+  await connected([], {accountStorage: () => accounts, user: {permissionId: 'account-a', emailAddress: 'writer@example.test'}});
+  const key = 'cork:google-drive-session:account';
+  const valid = JSON.parse(accounts.getItem(key));
+  for (const saved of [{...valid, clientId: 'another-client'}, {...valid, emailAddress: 'invalid'}, {...valid, version: 2}, 'invalid JSON']) {
+    accounts.setItem(key, typeof saved === 'string' ? saved : JSON.stringify(saved));
+    const client = reloadedClient(tabStorage(), () => assert.fail('Invalid hints must not access Drive'), {accountStorage: () => accounts});
+    assert.equal(client.remembered, false);
+  }
+  accounts.setItem(key, JSON.stringify(valid));
+  const otherSite = reloadedClient(tabStorage(), () => assert.fail('Another site cannot reuse the account'), {sessionKey: 'other-path', accountStorage: () => accounts});
+  assert.equal(otherSite.remembered, false);
+  const blocked = await connected([], {accountStorage: () => { throw new Error('blocked'); }, user: {permissionId: 'account-a', emailAddress: 'writer@example.test'}});
+  assert.equal(blocked.client.connected, true); blocked.client.disconnect(); assert.equal(blocked.client.remembered, false);
+});
+
+test('the account verified by Google controls saves even when the login hint names another account', async () => {
+  const accounts = tabStorage();
+  const auth = await connected([], {accountStorage: () => accounts, user: {permissionId: 'account-a', emailAddress: 'first@example.test'}});
+  const client = new GoogleDrive(config, {
+    accountStorage: () => accounts, now: () => 1000,
+    identity: () => ({initTokenClient: options => ({requestAccessToken() { queueMicrotask(() => options.callback({access_token: 'new-account-token', expires_in: 3600, scope: DRIVE_SCOPE})); }})}),
+    fetch: async url => { assert.match(url, /\/about\?/); return json({user: {permissionId: 'account-b', emailAddress: 'second@example.test'}}); },
+  });
+  await client.ready(); await client.authorize();
+  assert.equal(client.user.permissionId, 'account-b'); assert.equal(client.loginHint, 'second@example.test');
+  await assert.rejects(client.saveBoard(new Blob(['board']), 'Board.json', {id: 'board-id', version: '1', accountId: 'account-a'}), /another Google account/);
+  auth.client.disconnect(); client.disconnect();
 });
 
 test('Drive stays inactive without a site OAuth client and requests only per-file access', async () => {

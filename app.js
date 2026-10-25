@@ -328,7 +328,7 @@ function showSavedStatus() {
   if (savingBlocked) return setSaveStatus('Saving paused — export your board', true);
   if (linked && driveAutoErrors.has(activeSession.id)) return setSaveStatus('Browser saved · Drive needs attention', true);
   if (linked && fileTasks.has(activeSession.id)) return setSaveStatus('Browser saved · Saving to Drive…');
-  if (linked && fileChanged()) return setSaveStatus(!drive.connected ? 'Browser saved · Reconnect Drive' : file.accountId !== drive.user.permissionId ? 'Browser saved · Connect this board’s account' : 'Browser saved · Drive save pending');
+  if (linked && fileChanged()) return setSaveStatus(!drive.connected ? 'Browser saved · Drive paused' : file.accountId !== drive.user.permissionId ? 'Browser saved · Connect this board’s account' : 'Browser saved · Drive save pending');
   setSaveStatus(linked ? 'Saved to Google Drive' : fileChanged() ? 'Browser saved · File has changes' : 'Saved in this browser');
 }
 
@@ -2034,11 +2034,16 @@ function updateDriveControls() {
   $('drive-status').textContent = driveMessage || driveAutoErrors.get(activeSession.id)?.message || (!drive.configured
     ? 'Google Drive has not been enabled for this site yet. Your boards are still saved in this browser.'
     : connected ? `Connected as ${drive.user.displayName || drive.user.emailAddress || 'your Google account'}.`
+    : drive.remembered ? `Reconnect${drive.loginHint ? ` as ${drive.loginHint}` : ' Google Drive'} to resume saving your boards and categories.`
     : 'Connect to open or save Cork boards in your Google Drive.');
   $('drive-connect').hidden = connected || !drive.configured;
   $('drive-connect').disabled = !driveReady || driveBusy;
-  $('drive-connect').textContent = drive.user ? 'Reconnect Google Drive' : 'Connect Google Drive';
-  $('drive-disconnect').hidden = !drive.user;
+  $('drive-connect').textContent = drive.remembered ? 'Reconnect Google Drive' : 'Connect Google Drive';
+  $('drive-reconnect').hidden = connected || !drive.configured || !(drive.remembered || linked || categoryAccount);
+  $('drive-reconnect').disabled = !driveReady || driveBusy;
+  $('drive-reconnect').textContent = driveBusy ? 'Connecting…' : 'Reconnect Drive';
+  $('drive-reconnect').title = 'Reconnect Google Drive and resume saving' + (drive.loginHint ? ` as ${drive.loginHint}` : '');
+  $('drive-disconnect').hidden = !drive.remembered;
   $('drive-disconnect').disabled = driveBusy;
   $('drive-setup').hidden = drive.configured;
   $('drive-save').hidden = !drive.configured;
@@ -2069,6 +2074,10 @@ async function restoreDriveConnection() {
   if (driveBusy || drive.connected) return;
   driveBusy = true;
   try {
+    if (drive.remembered || categoryAccount || workspace.boards.some(entry => entry.file?.kind === 'drive')) {
+      // Prepare only; Google authorization still starts directly from a click.
+      await drive.ready(); driveReady = true;
+    }
     const user = await drive.restore();
     if (user) { driveReady = true; await connectCategoryAccount(user); }
   } catch (error) { driveMessage = error.message; }
@@ -2183,13 +2192,18 @@ async function saveDriveBoard(saveCopy = false, {session = activeSession, automa
 
 $('google-drive').addEventListener('click', openDriveDialog);
 $('drive-close').addEventListener('click', () => $('drive-dialog').close());
-$('drive-connect').addEventListener('click', async () => {
+async function connectDrive() {
+  if (driveBusy) return;
+  if (!driveReady) { await openDriveDialog(); return; }
   driveMessage = ''; driveBusy = true; updateDriveControls();
   try { await drive.authorize(); await connectCategoryAccount(drive.user); }
   catch (error) { driveMessage = error.message; }
   finally { driveBusy = false; updateDriveControls(); }
-  if (drive.connected) { resumeDriveAutosaves(); await refreshDriveBoards(); }
-});
+  if (drive.connected) { resumeDriveAutosaves(); if ($('drive-dialog').open) await refreshDriveBoards(); }
+  else if (!$('drive-dialog').open) { updateDriveControls(); $('drive-dialog').showModal(); }
+}
+$('drive-connect').addEventListener('click', connectDrive);
+$('drive-reconnect').addEventListener('click', connectDrive);
 $('drive-disconnect').addEventListener('click', () => {
   if (driveBusy) return;
   drive.disconnect(); driveMessage = 'Google Drive disconnected. Local board copies have been kept.'; updateDriveControls();

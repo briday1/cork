@@ -35,15 +35,37 @@ export function driveFileRecord(metadata, accountId, etag = '') {
 // A short-lived token may survive reloads in this tab's sessionStorage only.
 // It is never written to board files, localStorage, or IndexedDB.
 export class GoogleDrive {
-  constructor(config, {fetch = globalThis.fetch.bind(globalThis), now = Date.now, identity = () => globalThis.google?.accounts?.oauth2, onChange = () => {}, storage = () => globalThis.sessionStorage, sessionKey = 'cork:google-drive-session'} = {}) {
+  constructor(config, {fetch = globalThis.fetch.bind(globalThis), now = Date.now, identity = () => globalThis.google?.accounts?.oauth2, onChange = () => {}, storage = () => globalThis.sessionStorage, sessionKey = 'cork:google-drive-session', accountStorage = () => globalThis.localStorage} = {}) {
     this.config = config; this.fetch = fetch; this.now = now; this.identity = identity; this.onChange = onChange;
-    this.storage = storage; this.sessionKey = sessionKey;
+    this.storage = storage; this.sessionKey = sessionKey; this.accountStorage = accountStorage;
     this.token = ''; this.expiresAt = 0; this.user = null; this.generation = 0;
+    this.loginHint = '';
+    try {
+      const saved = JSON.parse(this.accountStorage()?.getItem(`${this.sessionKey}:account`) || 'null');
+      if (saved?.version === 1 && saved.clientId === this.config.clientId && typeof saved.emailAddress === 'string' && /^[^\s@]+@[^\s@]+$/.test(saved.emailAddress) && saved.emailAddress.length <= 255) this.loginHint = saved.emailAddress;
+    } catch { /* A remembered account is optional and never authorizes Drive access. */ }
   }
 
   get configured() { return /^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(this.config.clientId || ''); }
   get pickerConfigured() { return Boolean(this.config.apiKey && /^\d+$/.test(this.config.appId || '')); }
   get connected() { return Boolean(this.token && this.expiresAt > this.now() && this.user); }
+  get remembered() { return Boolean(this.user || this.loginHint); }
+
+  forgetAccount() {
+    this.loginHint = '';
+    try { this.accountStorage()?.removeItem(`${this.sessionKey}:account`); } catch { /* Disconnect also works when browser storage is blocked. */ }
+  }
+
+  rememberAccount() {
+    this.forgetAccount();
+    const email = this.user?.emailAddress;
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+$/.test(email) || email.length > 255) return;
+    this.loginHint = email;
+    try {
+      // Only an account hint persists between visits, never a token or grant.
+      this.accountStorage()?.setItem(`${this.sessionKey}:account`, JSON.stringify({version: 1, clientId: this.config.clientId, emailAddress: email}));
+    } catch { /* The hint can still be reused while this page remains open. */ }
+  }
 
   forgetSession() {
     try { this.storage()?.removeItem(this.sessionKey); } catch { /* Memory-only authorization still works when browser storage is blocked. */ }
@@ -88,7 +110,7 @@ export class GoogleDrive {
         const {user} = await response.json();
         if (generation !== this.generation) return null;
         if (user?.permissionId !== saved.accountId) throw new DriveAuthError('The remembered Google account could not be verified. Reconnect Google Drive to continue.');
-        this.user = user; this.scheduleExpiry(); this.onChange();
+        this.user = user; this.rememberAccount(); this.scheduleExpiry(); this.onChange();
         return user;
       } catch (error) {
         if (generation !== this.generation) return null;
@@ -125,7 +147,8 @@ export class GoogleDrive {
     this.generation++;
     const promise = new Promise((resolve, reject) => { this.pending = {resolve, reject}; });
     this.pending.promise = promise;
-    try { this.client.requestAccessToken({prompt: this.user ? '' : 'select_account', ...(this.user?.emailAddress ? {login_hint: this.user.emailAddress} : {})}); }
+    const loginHint = this.user?.emailAddress || this.loginHint;
+    try { this.client.requestAccessToken({prompt: this.remembered ? '' : 'select_account', ...(loginHint ? {login_hint: loginHint} : {})}); }
     catch { this.authorizationFailed(new DriveAuthError('Google sign-in could not open. Try Connect again.')); }
     return promise;
   }
@@ -144,7 +167,7 @@ export class GoogleDrive {
       if (this.pending !== pending) return;
       if (!user?.permissionId) throw new DriveAuthError('Google could not identify the connected account. Try Connect again.');
       this.user = user;
-      this.rememberSession(); this.scheduleExpiry();
+      this.rememberAccount(); this.rememberSession(); this.scheduleExpiry();
       this.pending = null; this.onChange(); pending.resolve(user);
     } catch (error) { if (this.pending === pending) this.authorizationFailed(error); }
   }
@@ -156,6 +179,7 @@ export class GoogleDrive {
 
   disconnect() {
     const token = this.token; this.generation++; this.token = ''; this.expiresAt = 0; this.user = null;
+    this.forgetAccount();
     clearTimeout(this.expiryTimer);
     this.authorizationFailed(new DriveAuthError('Google Drive was disconnected. Your browser copy is unchanged.'));
     try { if (token) this.identity()?.revoke(token, () => {}); } catch { /* The browser session is disconnected even if Google is unreachable. */ }
