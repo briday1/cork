@@ -1,6 +1,6 @@
 // Coalesce edits; offline/blocked work waits for resume(), never a polling loop.
 export class DriveAutoSaveQueue {
-  constructor({save, ready, delay = 2000, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout}) {
+  constructor({save, ready, delay = 2000, now = Date.now, setTimer = (callback, milliseconds) => setTimeout(callback, milliseconds), clearTimer = timer => clearTimeout(timer)}) {
     Object.assign(this, {save, ready, delay, now, setTimer, clearTimer});
     this.pending = new Map(); this.running = false; this.timer = null;
   }

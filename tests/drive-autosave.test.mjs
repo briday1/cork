@@ -13,6 +13,21 @@ function clock() {
   };
 }
 
+test('default browser timers do not receive the queue as their window receiver', () => {
+  const originalSet = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
+  let calls = 0;
+  function hostTimer() {
+    if (this != null && this !== globalThis) throw new TypeError('Illegal invocation');
+    calls++; return calls;
+  }
+  try {
+    globalThis.setTimeout = hostTimer; globalThis.clearTimeout = hostTimer;
+    const queue = new DriveAutoSaveQueue({ready: () => true, save: () => {}});
+    queue.schedule('board-a'); queue.remove('board-a');
+  } finally { globalThis.setTimeout = originalSet; globalThis.clearTimeout = originalClear; }
+  assert.ok(calls >= 3);
+});
+
 test('typing coalesces into one idle save of the newest board content', async () => {
   const time = clock(), writes = [];
   let content = '';
