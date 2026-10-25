@@ -148,3 +148,35 @@ test('board listings paginate and never ask to search the full Drive account', a
   const query = new URL(auth.requests[0].url).searchParams;
   assert.equal(query.get('pageToken'), 'previous page'); assert.match(query.get('q'), /trashed = false/);
 });
+
+test('account categories discovery only selects owned Cork category files', async () => {
+  const auth = await connected([json({files: [info('4', {name: 'Cork categories.txt'})]})]);
+  const result = await auth.client.findCategories();
+  assert.equal(result.name, 'Cork categories.txt'); assert.equal(result.accountId, 'account-a');
+  const query = new URL(auth.requests[0].url).searchParams;
+  assert.match(query.get('q'), /'me' in owners/);
+  assert.match(query.get('q'), /value='categories'/);
+  assert.equal(query.get('orderBy'), 'createdTime asc,name');
+});
+
+test('categories upload as their own text file with the same narrow authorization', async () => {
+  const auth = await connected([
+    new Response(null, {headers: {Location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=categories'}}),
+    json(info('1', {name: 'Cork categories.txt'})),
+  ]);
+  await auth.client.saveCategories('* Ideas\nWork', 'Cork categories.txt');
+  assert.deepEqual(JSON.parse(auth.requests[0].body), {name: 'Cork categories.txt', mimeType: 'text/plain', appProperties: {cork: 'categories'}});
+  assert.equal(auth.requests[0].headers.get('X-Upload-Content-Type'), 'text/plain');
+  assert.equal(await auth.requests[1].body.text(), '* Ideas\nWork');
+  assert.equal(auth.tokenOptions.scope, DRIVE_SCOPE);
+});
+
+test('categories reject oversized or non-text content before sending it to Google', async () => {
+  const auth = await connected();
+  assert.throws(() => auth.client.saveCategories('\u0000', 'Cork categories.txt'), /plain text/);
+  assert.throws(() => auth.client.saveCategories('é'.repeat(600000), 'Cork categories.txt'), /1 MB/);
+  assert.equal(auth.requests.length, 0);
+  const remote = await connected([json(info('1', {size: String(2 * 1024 * 1024)}))]);
+  await assert.rejects(remote.client.openCategories('board-id'), /1 MB/);
+  assert.equal(remote.requests.length, 1);
+});

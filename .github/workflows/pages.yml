@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: '22'
       - name: Check JavaScript syntax
-        run: node --check app.js && node --check board-core.js && node --check image-store.js && node --check export-core.js && node --check export-pdf.js && node --check category-file.js && node --check selection-core.js && node --check workspace.js && node --check board-file.js && node --check paper-core.js && node --check paper-texture.js && node --check google-drive.js && node --check google-drive-config.js
+        run: node --check app.js && node --check board-core.js && node --check image-store.js && node --check export-core.js && node --check export-pdf.js && node --check category-file.js && node --check category-profile.js && node --check drive-autosave.js && node --check selection-core.js && node --check workspace.js && node --check board-file.js && node --check paper-core.js && node --check paper-texture.js && node --check google-drive.js && node --check google-drive-config.js
       - name: Test board behavior
         run: npm test
       - name: Prepare static files

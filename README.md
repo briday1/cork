@@ -63,23 +63,31 @@ Shortcuts do not fire while you type in a text field.
 
 ## Board tabs and local files
 
-Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open one or more board `.json` files. The tabs stay in the left sidebar, with a simple underline on the active tab. The tab strip appears when more than one board is open. Boards appear one per row and scroll vertically when needed. With several boards, **All boards** opens a searchable list of every open board; search by board name or filename to switch directly. Each tab keeps its own notes, categories file, appearance, view, and undo/redo history. Open tabs and the active board return after a refresh; undo history lasts for the current session. The existing browser board becomes the first tab without moving or replacing its notes or categories.
+Use **+** beside **cork.** for a new board, or **⋯ → Open board…** to open one or more board `.json` files. The tabs stay in the left sidebar, with a simple underline on the active tab. The tab strip appears when more than one board is open. Boards appear one per row and scroll vertically when needed. With several boards, **All boards** opens a searchable list of every open board; search by board name or filename to switch directly. Each tab keeps its own notes, appearance, view, and undo/redo history. Categories belong to the connected Google account and are shared across its boards; without an account, one list is shared across boards in this browser. Open tabs and the active board return after a refresh; undo history lasts for the current session.
 
-The copy icon beside each board in the top list (or in **All boards**) duplicates that board, including an inactive one. **⋯ → Duplicate board** also creates an independent copy in a new tab, including notes, connections, appearance, text styles, and its categories list. It starts without a linked board file. **Save** asks for a new destination; choosing a file already linked to another board is blocked. Editing a duplicate never changes the source board.
+The copy icon beside each board in the top list (or in **All boards**) duplicates that board, including an inactive one. **⋯ → Duplicate board** also creates an independent copy in a new tab, including notes, connections, appearance, and text styles. It starts without a linked board file and uses your account's shared categories. **Save** asks for a new destination; choosing a file already linked to another board is blocked. Editing a duplicate's notes never changes the source board.
 
 **Save** (Ctrl/Cmd+S) chooses a local board file the first time, then writes to that file. **⋯ → Save as…** (Ctrl/Cmd+Shift+S) chooses another file. File links are remembered where the browser supports them; it may ask for access again. A small dot on a tab and “File has changes” mean the browser copy is ahead of the saved file. Browser saving continues automatically; file writes happen when you use Save. If a file has changed outside Cork, Save asks you to use Save as to preserve both copies. Browsers without local file writing download the board instead and remember the filename.
 
-Load a categories `.txt` file independently for each tab, or keep the repository default. Two boards can deliberately use the same categories file. Opening a board file that is already linked brings its existing tab forward. Close a tab with its ×. Closed boards are removed from the list and are not remembered. Cork offers Save and close, Close without saving, and Cancel when the board has unsaved content. Closing a tab does not delete a local file. For a portable setup, keep each board `.json` together with its categories `.txt`; choose that pair once in a new browser.
+Opening a board file that is already linked brings its existing tab forward. Close a tab with its ×. Closed boards are removed from the list and are not remembered. Cork offers Save and close, Close without saving, and Cancel when the board has unsaved content. Closing a tab does not delete its file or your shared categories.
+
+## Account categories
+
+Use **Edit** beside **Categories** to update the list directly. Enter one category per line, with an optional leading `*` for Frequently used. Changes save automatically. The source label shows whether the list is saved in this browser, syncing to Drive, waiting for reconnect, or needs attention. Expand the filename for **Import .txt…**, **Refresh from Drive**, **Download .txt**, **Use defaults**, and a link to the actual Drive file.
+
+Connecting Google Drive loads or creates one ordinary **Cork categories.txt** file owned by that Google account. All boards use this account list; switching, duplicating, opening, or saving a board does not change it or create another categories file. On a first connection with no existing account list, Cork starts from the current browser list. Connecting a different account uses that account's list or the repository defaults, keeping the previous account's list separate. The last account's cached categories remain available for offline editing and sync after reconnecting to that account.
+
+Edits save after a short pause, and imports update the same account file. Cork also checks for external file edits when you return to the page. If another device changed the list while you were editing offline, your text stays in the browser; **Edit categories** offers **Use Drive list** or **Replace Drive list with mine**. Download a text copy whenever you need a backup. Existing browser installations migrate the previously active board's category choice to the shared browser list once.
 
 ![Dark interface, blue paper background, and the searchable board list with a duplicate action.](./docs/cork-dark-boards.jpg?v=ec0ecb5465a0)
 
 ## Google Drive
 
-Use **⋯ → Google Drive…** to connect a Google account, save the current board, or open a previously saved Cork board. Each board is an ordinary JSON file in your Drive, including its original images, layout, and text styles. A local categories file and local folder permissions stay on your device; load or reconnect them separately on another device. The Drive list contains only files available to Cork under its per-file permission. If the optional Google Picker is configured, **Choose another Drive file…** also lets you explicitly select an existing board JSON file.
+Use **⋯ → Google Drive…** to connect a Google account, save the current board, or open a previously saved Cork board. Each board is an ordinary JSON file in your Drive, including its original images, layout, and text styles. Your account's categories are a separate text file, loaded automatically on connection. Local folder permissions stay on your device and must be reconnected on another device. The Drive list contains only files available to Cork under its per-file permission. If the optional Google Picker is configured, **Choose another Drive file…** also lets you explicitly select an existing board JSON file.
 
-After saving or opening a Drive board, **Save** and **Ctrl/Cmd+S** update that linked Drive file. **Save a Drive copy** creates a separate file and links the current tab to it; the previous Drive file remains intact. **Save as…** selects a local file instead. Duplicating a board starts an independent board without a linked destination.
+After saving or opening a Drive board, edits update that linked Drive file automatically after a two-second pause. **Save** and **Ctrl/Cmd+S** save immediately. Edits made before switching boards still save to the original board file. **Save a Drive copy** creates a separate board file and links the current tab to it; the previous Drive file remains intact. Both boards continue to use your account's categories. **Save as…** selects a local file instead. Duplicating a board starts an independent board without a linked destination.
 
-Browser saving continues automatically; Drive writes happen only when you use Save. Access tokens remain in memory and expire. Use **Reconnect Google Drive** when needed; saved browser copies and pending edits remain available. Disconnect revokes the current grant when Google is reachable and clears authorization in Cork, without deleting local or Drive boards. A fresh page visit requires connecting again for Drive operations.
+Browser saving continues automatically. Drive autosave only writes changed files and coalesces bursts of edits. The board status distinguishes pending changes, active uploads, saved files, and reconnection or conflict problems. Access tokens remain in memory and expire. Use **Reconnect Google Drive** when needed; saved browser copies and pending board/category edits resume afterward. Disconnect revokes the current grant when Google is reachable and clears authorization in Cork, without deleting local or Drive files. A fresh page visit requires connecting again for Drive operations.
 
 Cork checks the remote file version before updating it, supplies an HTTP precondition when Drive exposes an ETag, and refuses to overwrite a version it knows has changed. **Save a Drive copy** preserves both versions. This is file saving, not real-time collaboration or automatic merging; avoid simultaneous editing of one file on multiple devices. Opening an already-open board with unsaved browser changes keeps that copy rather than replacing it. Opening a clean board again loads its latest Drive version.
 
@@ -106,7 +114,7 @@ Defaults are copied into newly placed notes, cards, photos, and folder labels; e
 
 The repository’s **[`categories.txt`](./categories.txt)** is a default list. You do not need to edit or fork the repository to use your own categories, and you keep receiving app updates.
 
-Open **Categories** (or your current filename) above the sidebar search. Choose **Save a copy** to download a starting list, edit it with a text editor, and choose **Load file…** to select your local `.txt` file. Each nonempty line is a category:
+Choose **Edit** beside Categories in the sidebar to change the list. Edits save automatically, and every board uses the same list. You can also open the filename above the sidebar search to **Import .txt**, **Download .txt**, or restore **Use defaults**. Each nonempty line is a category:
 
 ```text
 * Ideas
@@ -118,15 +126,17 @@ Something completely different
 
 Prefix a line with `*` (with or without a space) to put that category in **Frequently used** at the top of the list. The marker is hidden from labels and notes. Other categories appear below. Searching filters both groups, and Random category still uses the entire list. Marking a category does not change its color or position in the underlying category order.
 
-![Category search with frequently used notes and local categories file controls.](./docs/cork-categories.jpg?v=52639ff73deb)
+![Category search with frequently used notes.](./docs/cork-categories.jpg?v=52639ff73deb)
 
-The browser remembers a copy of your loaded list across visits. Where the browser supports linking local files, Cork also remembers the file handle and checks for edits on startup and when you return to the tab. If file permission expires, the saved list keeps working; **Refresh** lets you allow access again. In other browsers, **Reload file…** asks you to select the edited file again. You do not need to reload an unchanged list on every visit. **Use default** switches back to the repository list without changing your notes. Your local file is only read, never overwritten or uploaded. Clearing this site’s browser data removes the saved copy and file link.
+Without Drive, the browser remembers your list across visits. Where the browser supports linking imported local files, Cork checks for file edits on startup and when you return to the tab. If permission expires, the saved list keeps working; **Refresh file** lets you allow access again. In other browsers, **Reload file…** asks you to select the edited file again. Editing the list inside Cork keeps a browser copy and stops following the imported file. Cork never overwrites the imported local file. Clearing this site’s browser data removes the saved copy and file link.
 
-Keep two files for a portable setup: your **categories `.txt`** (usually changed rarely) and your **board `.json`** from Save or Download board copy. The board contains the notes and original images; the categories file is separate. When moving to another browser or device, open the board and load its categories once. A selected categories file is limited to 1 MB.
+With Drive connected, Cork loads or creates one **Cork categories.txt** for that Google account and automatically saves list edits to the same file. It is shared across all boards and remains separate from board `.json` files. The source summary identifies the account and shows whether edits are saved, pending, or need attention. On another device, connect the same account to load its list. Offline edits stay in this browser until you reconnect; conflicting edits on another device ask you which list to keep. **View file in Drive** opens the editable text file.
+
+For a portable setup without Drive, keep your **categories `.txt`** and your **board `.json`** from Save or Download board copy. The board contains the notes and original images; the categories file is separate. On another browser or device, open the board and import your categories once. A categories file is limited to 1 MB.
 
 Leading/trailing spaces and empty lines are ignored. Duplicate names are removed without regard to case. `#` is ordinary category text, not a comment marker. Existing notes keep their category names and content even when you remove or rename a category in the file. A small sidebar notice flags categories used on the board but absent from the file. They appear under **Also on this board** and still work for new notes, searching, Random category, saving, and export. Names are compared without regard to case; cards, photos, and folders do not count as missing categories. Removing a category does **not** delete its notes.
 
-No category count is hard-coded. Maintainers can still edit the repository list to change the default for people who have not loaded a local list; it is fetched without caching. App updates and changes to that default never replace someone’s loaded local list.
+No category count is hard-coded. Maintainers can still edit the repository list to change the default for new users; it is fetched without caching. App updates and changes to that default never replace a saved list. **Use defaults** explicitly replaces the current list and autosaves that choice for a connected account.
 
 
 ## Appearance and color maps
@@ -199,6 +209,8 @@ The `dist/` build copies the public files and stamps their URLs with a content v
 | `styles.css` | Cork, paper, responsive layouts, and themes |
 | `app.js` | Placement, cursor preview, dragging, editing, pan/zoom, saving, export/import |
 | `google-drive.js` | Optional browser-only Drive authorization, file selection, uploads, and version checks |
+| `category-profile.js` | Account-scoped categories, shared text-file discovery, and conflict resolution |
+| `drive-autosave.js` | Debounced board saves that wait for the correct connected account |
 | `google-drive-config.js` | Public OAuth client ID and optional restricted Picker configuration |
 | `about.html`, `privacy.html` | Public app description and privacy policy for Google consent setup |
 | `board-core.js` | Category parsing, color maps, coordinate transforms, import validation, list continuation |

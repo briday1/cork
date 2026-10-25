@@ -1,3 +1,5 @@
+import {MAX_CATEGORY_FILE_SIZE, validateCategoryText} from './category-file.js';
+
 export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
@@ -116,8 +118,8 @@ export class GoogleDrive {
       this.token = ''; this.onChange();
       throw new DriveAuthError('Reconnect Google Drive to continue. Your changes are still saved in this browser.');
     }
-    if (response.status === 409 || response.status === 412) throw new DriveConflictError('This board changed in Drive. Save a Drive copy to keep both versions.');
-    if (response.status === 404) throw new Error('This Drive board is no longer available to this account. Save a Drive copy to keep your changes.');
+    if (response.status === 409 || response.status === 412) throw new DriveConflictError('This file changed in Drive. Your browser changes have been kept.');
+    if (response.status === 404) throw new Error('This Drive file is no longer available to this account. Your browser changes have been kept.');
     if (response.status === 403) throw new Error('Google Drive did not allow this request. Check file access and available storage, or save a local copy.');
     if (!response.ok) throw new Error('Google Drive could not finish that request. Your browser copy is unchanged. Please try again.');
     return response;
@@ -126,7 +128,7 @@ export class GoogleDrive {
   async metadata(id) {
     const response = await this.request(`${API}/files/${fileId(id)}?fields=${encodeURIComponent(FIELDS)}`);
     const data = await response.json();
-    if (data.trashed) throw new Error('This board is in Drive Trash. Restore it in Drive or save a Drive copy.');
+    if (data.trashed) throw new Error('This file is in Drive Trash. Restore it in Drive or save a new copy.');
     return {data, record: driveFileRecord(data, this.user?.permissionId, response.headers.get('etag') || '')};
   }
 
@@ -137,39 +139,62 @@ export class GoogleDrive {
     return response.json();
   }
 
-  async openBoard(id) {
-    const before = await this.metadata(id);
-    if (before.record.size > MAX_SIZE) throw new Error('Choose a board file smaller than 100 MB.');
-    const response = await this.request(`${API}/files/${fileId(id)}?alt=media`);
-    const blob = await response.blob();
-    if (blob.size > MAX_SIZE) throw new Error('Choose a board file smaller than 100 MB.');
-    const after = await this.metadata(id);
-    if (before.record.version !== after.record.version) throw new DriveConflictError('This board changed while opening. Try opening it again.');
-    return {file: new File([blob], after.record.name, {type: 'application/json', lastModified: after.record.modified}), record: after.record};
+  async findCategories() {
+    const query = new URLSearchParams({q: "trashed = false and 'me' in owners and appProperties has { key='cork' and value='categories' }", fields: `nextPageToken,files(${FIELDS})`, pageSize: '1', orderBy: 'createdTime asc,name'});
+    let page;
+    do {
+      const response = await this.request(`${API}/files?${query}`);
+      page = await response.json();
+      if (page.files?.length) return driveFileRecord(page.files[0], this.user.permissionId);
+      if (page.nextPageToken) query.set('pageToken', page.nextPageToken);
+    } while (page.nextPageToken);
+    return null;
   }
 
-  async saveBoard(blob, name, previous = null) {
+  openBoard(id) { return this.openFile(id); }
+
+  openCategories(id) { return this.openFile(id, {limit: MAX_CATEGORY_FILE_SIZE, mimeType: 'text/plain', label: 'categories', sizeLabel: '1 MB'}); }
+
+  async openFile(id, {limit = MAX_SIZE, mimeType = 'application/json', label = 'board', sizeLabel = '100 MB'} = {}) {
+    const before = await this.metadata(id);
+    if (before.record.size > limit) throw new Error(`Choose a ${label} file smaller than ${sizeLabel}.`);
+    const response = await this.request(`${API}/files/${fileId(id)}?alt=media`);
+    const blob = await response.blob();
+    if (blob.size > limit) throw new Error(`Choose a ${label} file smaller than ${sizeLabel}.`);
+    const after = await this.metadata(id);
+    if (before.record.version !== after.record.version) throw new DriveConflictError(`These ${label} contents changed while opening. Try opening them again.`);
+    return {file: new File([blob], after.record.name, {type: mimeType, lastModified: after.record.modified}), record: after.record};
+  }
+
+  saveBoard(blob, name, previous = null) { return this.saveFile(blob, name, previous); }
+
+  saveCategories(text, name, previous = null) {
+    validateCategoryText(text);
+    return this.saveFile(new Blob([text], {type: 'text/plain'}), name, previous, {mimeType: 'text/plain', type: 'categories', limit: MAX_CATEGORY_FILE_SIZE});
+  }
+
+  async saveFile(blob, name, previous = null, {mimeType = 'application/json', type = 'board', limit = MAX_SIZE} = {}) {
     if (!this.connected) throw new DriveAuthError('Reconnect Google Drive to save. Your changes are still saved in this browser.');
-    if (blob.size > MAX_SIZE) throw new Error('This board is larger than 100 MB. Save a local copy instead.');
-    if (previous && previous.accountId !== this.user.permissionId) throw new DriveAuthError('This board is linked to another Google account. Connect that account or save a Drive copy.');
+    if (blob.size > limit) throw new Error('This file is too large to save to Drive. Save a local copy instead.');
+    if (previous && previous.accountId !== this.user.permissionId) throw new DriveAuthError('This file is linked to another Google account. Connect that account or save a Drive copy.');
     let remote;
     if (previous) {
       remote = await this.metadata(previous.id);
-      if (remote.record.version !== previous.version) throw new DriveConflictError('This board changed in Drive. Save a Drive copy to keep both versions.');
-      if (remote.data.capabilities?.canEdit === false) throw new Error('This Drive board is read-only. Save a Drive copy to keep your changes.');
+      if (remote.record.version !== previous.version) throw new DriveConflictError(`This ${type} file changed in Drive. Your browser changes have been kept.`);
+      if (remote.data.capabilities?.canEdit === false) throw new Error('This Drive file is read-only. Save a Drive copy to keep your changes.');
     }
-    const headers = {'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': 'application/json', 'X-Upload-Content-Length': String(blob.size)};
+    const headers = {'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': mimeType, 'X-Upload-Content-Length': String(blob.size)};
     if (remote?.record.etag) headers['If-Match'] = remote.record.etag;
     const url = `${UPLOAD}${previous ? `/${fileId(previous.id)}` : ''}?uploadType=resumable&fields=${encodeURIComponent(FIELDS)}`;
     const session = await this.request(url, {
       method: previous ? 'PATCH' : 'POST', headers,
-      body: JSON.stringify({name, mimeType: 'application/json', appProperties: {cork: 'board'}}),
+      body: JSON.stringify({name, mimeType, appProperties: {cork: type}}),
     });
     const location = session.headers.get('location');
     let target;
     try { target = new URL(location); } catch { /* Validated below before sending a token. */ }
     if (!target || target.protocol !== 'https:' || !['www.googleapis.com', 'content.googleapis.com'].includes(target.hostname) || !target.pathname.startsWith('/upload/drive/v3/files') || target.username || target.password || target.port) throw new Error('Drive did not return a valid upload destination. Your browser copy is unchanged.');
-    const response = await this.request(target.href, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: blob});
+    const response = await this.request(target.href, {method: 'PUT', headers: {'Content-Type': mimeType}, body: blob});
     return driveFileRecord(await response.json(), this.user.permissionId, response.headers.get('etag') || '');
   }
 

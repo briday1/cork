@@ -1,13 +1,15 @@
 import {normalizeNoteStyle, NOTE_FONTS, STORAGE_KEY, parseCategoryFile, missingBoardCategories, directoryNameFromFiles, categoryColor, blankBoard, screenToWorld, zoomAt, revealNote, focusNoteView, validateBoard, continueList} from './board-core.js';
 import {prepareImage, putImage, getImage, exportImages, importImages, putFolder, getFolder} from './image-store.js';
 import {connectionGeometry} from './export-core.js';
-import {readCategoryFile, readCategoryCache, writeCategoryCache, readLinkedCategories, getCategoryHandle, putCategoryHandle} from './category-file.js';
+import {readCategoryFile, readCategoryCache, writeCategoryCache, readLinkedCategories, getCategoryHandle, putCategoryHandle, validateCategoryText, categoriesChanged} from './category-file.js';
+import {ACCOUNT_CATEGORY_NAME, categoryProfileKey, readCategoryAccount, syncCategoryProfile} from './category-profile.js';
+import {DriveAutoSaveQueue} from './drive-autosave.js';
 import {selectionBounds, notesInSelection} from './selection-core.js';
 import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp, duplicateBoardSnapshot} from './workspace.js';
 import {readBoardFile, writeBoardFile} from './board-file.js';
 import {resizePaper} from './paper-core.js';
 import {PAPER_TILE_SIZE, paperResolution, paintPaperTile} from './paper-texture.js';
-import {GoogleDrive, DriveAuthError} from './google-drive.js';
+import {GoogleDrive, DriveAuthError, DriveConflictError} from './google-drive.js';
 import {googleDriveConfig} from './google-drive-config.js';
 
 const $ = id => document.getElementById(id);
@@ -25,13 +27,16 @@ const sessions = new Map(), fileTasks = new Set();
 let textTarget = 'new', textSelection = '';
 let openingBoard = false, categoryPickSession = null, imagePickSession = null, folderPickSession = null;
 let driveBusy = false, driveReady = false, driveMessage = '', driveListRevision = 0;
-const drive = new GoogleDrive(googleDriveConfig, {onChange: () => { if (!drive.connected) driveMessage = ''; updateBoardFiles(); }});
+const drive = new GoogleDrive(googleDriveConfig, {onChange: () => { if (!drive.connected) driveMessage = ''; updateBoardFiles(); renderCategorySource(); showSavedStatus(); }});
+const driveAutoErrors = new Map();
+const driveAutosave = new DriveAutoSaveQueue({ready: autoDriveReady, save: id => saveDriveBoard(false, {session: sessions.get(id), automatic: true})});
 let pendingCloseId = null;
 let board = blankBoard();
 let categories = [];
 let frequentCategories = new Set();
 let categoryFile = null, categoryHandle = null, categoryText = '', categoryStatus = '';
 let categoryRevision = 0, categoryBusy = false, categoriesReady = false, lastCategoryCheck = 0;
+let categoryAccount = null, categoryConflict = false, categorySyncError = '', categorySaveTimer, categoryEditTimer, categoryEditKey, categoryEditText;
 const selected = new Set();
 const selectedStrings = new Set();
 let placement = null;
@@ -76,7 +81,9 @@ try {
 }
 activeSession = getSession(workspace.activeId);
 board = activeSession.board;
-({board: storageKey, categories: categoriesKey} = boardKeys(appKey, activeSession.id));
+storageKey = boardKeys(appKey, activeSession.id).board;
+try { categoryAccount = readCategoryAccount(localStorage, appKey); } catch { /* The local categories remain available. */ }
+categoriesKey = categoryProfileKey(appKey, categoryAccount?.id);
 undoStack = activeSession.undo; redoStack = activeSession.redo;
 savingBlocked = activeSession.blocked;
 
@@ -101,6 +108,26 @@ function rememberWorkspace() {
 function fileChanged(session = activeSession) {
   const file = entryFor(session)?.file;
   return Boolean(file && file.stamp !== boardStamp(session === activeSession ? board : session.board));
+}
+
+function autoDriveReady(id) {
+  const session = sessions.get(id), file = session && entryFor(session)?.file;
+  return Boolean(session && file?.kind === 'drive' && drive.connected && file.accountId === drive.user.permissionId && !driveBusy && !openingBoard && !workspaceBlocked && !pdfExporting && !session.blocked && !fileTasks.has(id) && !driveAutoErrors.has(id));
+}
+
+function queueDriveBoard(session = activeSession) {
+  if (entryFor(session)?.file?.kind === 'drive' && fileChanged(session)) driveAutosave.schedule(session.id);
+  else driveAutosave.remove(session.id);
+}
+
+function resumeDriveAutosaves() {
+  for (const entry of workspace.boards) {
+    if (entry.file?.kind !== 'drive' || entry.file.accountId !== drive.user?.permissionId) continue;
+    const error = driveAutoErrors.get(entry.id);
+    if (!(error instanceof DriveConflictError)) driveAutoErrors.delete(entry.id);
+    queueDriveBoard(getSession(entry.id));
+  }
+  driveAutosave.resume();
 }
 
 function renderBoardTabs() {
@@ -178,6 +205,7 @@ function updateBoardFiles() {
   $('duplicate-board').disabled = workspaceBlocked || pdfExporting;
   $('open-board').disabled = workspaceBlocked || openingBoard || pdfExporting;
   updateDriveControls();
+  driveAutosave.resume();
 }
 
 async function restoreBoardHandle(session) {
@@ -199,20 +227,18 @@ function switchBoard(id) {
   if (pdfExporting) return toast('Finish the PDF export before switching boards.');
   document.activeElement?.blur(); cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false);
   saveNow(); activeSession.board = board; activeSession.blocked = savingBlocked;
-  categoryRevision++; cancelAnimationFrame(caretFrame); mobileEditing = null;
+  cancelAnimationFrame(caretFrame); mobileEditing = null;
   $('toast').hidden = true; closeMenu();
   activeSession = getSession(id); board = activeSession.board;
   workspace.activeId = id; entryFor().open = true;
-  ({board: storageKey, categories: categoriesKey} = boardKeys(appKey, id));
+  storageKey = boardKeys(appKey, id).board;
   savingBlocked = activeSession.blocked;
   undoStack = activeSession.undo; redoStack = activeSession.redo;
   selected.clear(); selectedStrings.clear(); activePointers.clear();
   pointer = null; handMode = false; spaceHeld = false; updateHandMode();
-  categories = []; frequentCategories.clear(); categoriesReady = false; categoryLoadFailed = false;
-  categoryFile = null; categoryHandle = null; categoryBusy = false; categoryStatus = ''; lastCategoryCheck = 0;
-  $('category-search').value = ''; $('category-source').open = false;
+  $('category-search').value = '';
   renderBoard(); updateHistory(); renderBoardTabs(); rememberWorkspace();
-  loadCategories(); restoreBoardHandle(activeSession);
+  renderCategories(); updateNoteColors(); restoreBoardHandle(activeSession);
   if (savingBlocked) { setSaveStatus('Saving paused — export your board', true); toast(activeSession.problem || 'This board changed in another browser tab. Reload before editing it.'); }
   else showSavedStatus();
 }
@@ -236,30 +262,16 @@ async function duplicateBoard(sourceId = activeSession.id) {
   if (!workspace.boards.some(entry => entry.id === sourceId)) return;
   const source = getSession(sourceId);
   const snapshot = duplicateBoardSnapshot(source === activeSession ? board : source.board, workspace.boards.map(entry => entry.name));
-  const sourceKey = boardKeys(appKey, sourceId).categories;
-  let copiedCategories;
-  try { copiedCategories = (source === activeSession ? categoryFile : null) || readCategoryCache(localStorage, sourceKey); }
-  catch { /* The default list remains available if the cache is damaged. */ }
   const name = snapshot.name;
   const id = crypto.randomUUID(), keys = boardKeys(appKey, id);
   try {
     localStorage.setItem(keys.board, JSON.stringify(snapshot));
-    if (copiedCategories) writeCategoryCache(localStorage, keys.categories, copiedCategories);
   } catch { return toast('The board could not be duplicated. Browser storage is unavailable or full.'); }
   // Images and folder handles are immutable shared resources; the board data
   // and file destination are independent. No original file is inherited.
   workspace.boards.push({id, name, open: true, file: null});
   switchBoard(id); saveNow();
   toast('Board duplicated. Save will ask for a new board file.');
-  if (copiedCategories) {
-    try {
-      const linked = await getCategoryHandle(sourceKey);
-      if (linked?.token === copiedCategories.token) {
-        await putCategoryHandle(keys.categories, linked);
-        if (activeSession.id === id) loadCategories();
-      }
-    } catch { /* The copied category list works without its file handle. */ }
-  }
 }
 
 async function closeBoardTab(id) {
@@ -289,6 +301,7 @@ function finishCloseBoard(id) {
   }
   workspace.boards = workspace.boards.filter(item => item.id !== id);
   sessions.delete(id); rememberWorkspace(); renderBoardTabs();
+  driveAutosave.remove(id); driveAutoErrors.delete(id);
   const keys = boardKeys(appKey, id);
   try { localStorage.removeItem(keys.board); localStorage.removeItem(keys.categories); } catch { /* The closed board is no longer in the workspace. */ }
   putCategoryHandle(keys.file, null).catch(() => {});
@@ -311,8 +324,12 @@ function setSaveStatus(text, error = false) {
 }
 
 function showSavedStatus() {
-  const destination = entryFor()?.file?.kind === 'drive' ? 'Drive' : 'File';
-  setSaveStatus(fileChanged() ? `Browser saved · ${destination} has changes` : 'Saved in this browser');
+  const file = entryFor()?.file, linked = file?.kind === 'drive';
+  if (savingBlocked) return setSaveStatus('Saving paused — export your board', true);
+  if (linked && driveAutoErrors.has(activeSession.id)) return setSaveStatus('Browser saved · Drive needs attention', true);
+  if (linked && fileTasks.has(activeSession.id)) return setSaveStatus('Browser saved · Saving to Drive…');
+  if (linked && fileChanged()) return setSaveStatus(!drive.connected ? 'Browser saved · Reconnect Drive' : file.accountId !== drive.user.permissionId ? 'Browser saved · Connect this board’s account' : 'Browser saved · Drive save pending');
+  setSaveStatus(linked ? 'Saved to Google Drive' : fileChanged() ? 'Browser saved · File has changes' : 'Saved in this browser');
 }
 
 function saveNow() {
@@ -323,6 +340,7 @@ function saveNow() {
     activeSession.board = board;
     entryFor().name = board.name;
     rememberWorkspace(); updateBoardFiles(); showSavedStatus();
+    queueDriveBoard(activeSession);
   } catch {
     setSaveStatus('Could not save — please export', true);
     toast('Browser storage is unavailable or full. Export your board to keep it.');
@@ -387,43 +405,79 @@ function applyCategoryText(text) {
   updateNoteColors();
 }
 
+function categoryDriveConnected() {
+  return Boolean(categoryAccount && drive.connected && categoryAccount.id === drive.user.permissionId);
+}
+
+function categoryLocation() {
+  if (!categoryAccount) return 'This browser';
+  if (categoryConflict) return 'Google Drive · Needs attention';
+  if (categoryBusy) return 'Google Drive · Syncing…';
+  if (!categoryDriveConnected()) return 'Google Drive · Reconnect to sync';
+  if (categorySyncError) return 'Google Drive · Save paused';
+  if (categoriesChanged(categoryFile)) return 'Google Drive · Save pending';
+  return 'Google Drive · Saved';
+}
+
 function renderCategorySource() {
   $('category-source-name').textContent = categoryFile?.name || 'Categories';
-  $('category-source-status').textContent = categoryStatus || (categoryFile ? 'Saved in this browser. Use Refresh after editing the file.' : 'Load your own .txt file to use instead.');
+  $('category-source-location').textContent = categoryLocation();
+  const account = categoryAccount?.label || 'your Google account';
+  const detail = categoryAccount
+    ? 'One categories file for ' + account + ', shared across all your boards. Edits save automatically' + (categoryDriveConnected() ? ' to Drive.' : ' after you reconnect.')
+    : categoryHandle ? 'Linked to this text file. Changes are checked when you return. This list is shared across boards in this browser.'
+    : 'Shared across boards in this browser. Connect Google Drive to keep one list with your Google account.';
+  $('category-source-status').textContent = categorySyncError || categoryStatus || detail;
   $('category-source').classList.toggle('is-local', Boolean(categoryFile));
   $('refresh-categories').hidden = !categoryFile;
   $('default-categories').hidden = !categoryFile;
-  $('refresh-categories').textContent = categoryHandle ? 'Refresh' : 'Reload file…';
+  $('refresh-categories').textContent = categoryAccount ? 'Refresh from Drive' : categoryHandle ? 'Refresh file' : 'Reload file…';
   $('download-categories').disabled = !categoriesReady || categoryLoadFailed;
-  for (const id of ['load-categories', 'refresh-categories', 'default-categories']) $(id).disabled = categoryBusy;
+  $('connect-category-drive').hidden = !drive.configured || categoryDriveConnected();
+  $('connect-category-drive').textContent = categoryAccount ? 'Reconnect Drive' : 'Connect Google Drive';
+  $('category-drive-file').hidden = !categoryFile?.drive;
+  if (categoryFile?.drive) $('category-drive-file').href = 'https://drive.google.com/file/d/' + encodeURIComponent(categoryFile.drive.id) + '/view';
+  for (const id of ['load-categories', 'refresh-categories', 'default-categories', 'edit-categories']) $(id).disabled = categoryBusy || (id === 'edit-categories' && !categoriesReady);
+  $('category-edit-account').textContent = categoryAccount ? 'Your categories for ' + account + ', shared across all boards.' : 'Your categories are shared across all boards in this browser.';
+  $('category-edit-status').textContent = categorySyncError || categoryStatus || (categoryBusy ? 'Syncing categories…' : categoriesChanged(categoryFile) && categoryAccount ? 'Saved in this browser · ' + (categoryDriveConnected() ? 'Drive save pending' : 'Waiting to reconnect') : categoryLocation());
+  $('category-conflict-actions').hidden = !categoryConflict;
+  $('category-use-drive').disabled = categoryBusy;
+  $('category-keep-mine').disabled = categoryBusy;
+  $('drive-category-status').textContent = categoryAccount ? 'Categories: ' + categoryLocation().replace('Google Drive · ', '') + '. Shared across your account’s boards.' : 'Connecting also loads or creates your account’s categories file.';
 }
 
 function cacheCategories() {
   try { writeCategoryCache(localStorage, categoriesKey, categoryFile); return true; }
   catch {
-    categoryStatus = 'Loaded for this tab. Browser storage could not remember the list; keep your text file.';
+    categoryStatus = 'Loaded for this visit. Browser storage could not remember the list; download a copy before leaving.';
     return false;
   }
 }
 
-async function loadDefaultCategories() {
+function queueCategorySync() {
+  clearTimeout(categorySaveTimer);
+  if (!categoryDriveConnected() || categoryConflict || categorySyncError || !categoriesChanged(categoryFile)) return;
+  categorySaveTimer = setTimeout(() => syncAccountCategories(), 1600);
+}
+
+async function loadDefaultCategories(changed = false) {
   const revision = ++categoryRevision;
   categoryStatus = 'Loading default categories…';
   renderCategorySource();
   try {
     const response = await fetch(new URL('./categories.txt', import.meta.url), {cache: 'no-store'});
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const text = await response.text();
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const text = validateCategoryText(await response.text());
     if (revision !== categoryRevision) return;
-    categoryStatus = '';
-    applyCategoryText(text);
+    categoryFile = {version: 1, name: categoryAccount ? (categoryFile?.drive?.name || ACCOUNT_CATEGORY_NAME) : 'categories.txt', text, token: crypto.randomUUID(), ...(categoryFile?.drive ? {drive: categoryFile.drive} : {}), ...(changed && categoryAccount ? {pending: true} : {})};
+    categoryHandle = null; categoryStatus = ''; categorySyncError = ''; categoryConflict = false;
+    applyCategoryText(text); cacheCategories();
+    if (changed) queueCategorySync();
   } catch (error) {
     if (revision !== categoryRevision) return;
-    categoryLoadFailed = true;
-    categoriesReady = true;
-    categories = [];
-    frequentCategories.clear();
-    categoryStatus = 'Couldn’t load the default list. Load a local file or retry below.';
+    categoryLoadFailed = true; categoriesReady = true;
+    categories = []; frequentCategories.clear();
+    categoryStatus = 'Couldn’t load the default list. Import a text file or retry below.';
     renderCategories(); updateNoteColors();
     console.warn('Cork could not load categories.txt:', error.message);
   }
@@ -435,37 +489,105 @@ async function loadCategories() {
   categoryFile = null; categoryHandle = null; categoryBusy = false;
   try {
     categoryFile = readCategoryCache(localStorage, categoriesKey);
-  } catch { /* Defaults remain available if browser storage cannot be read. */ }
+    // Migrate the previously active board's list once. Future board switches
+    // do not select, copy, or reload categories.
+    if (!categoryFile && !categoryAccount) {
+      const legacyKey = boardKeys(appKey, activeSession.id).categories;
+      categoryFile = readCategoryCache(localStorage, legacyKey);
+      if (categoryFile) {
+        cacheCategories();
+        try {
+          const linked = await getCategoryHandle(legacyKey);
+          if (revision !== categoryRevision) return;
+          if (linked?.token === categoryFile.token) await putCategoryHandle(categoriesKey, linked);
+        } catch { /* Its cached text is enough to keep the list available. */ }
+      }
+    }
+  } catch { /* A Drive reconnect or the default list remains available. */ }
+  if (revision !== categoryRevision) return;
   if (!categoryFile) return loadDefaultCategories();
-  categoryStatus = 'Using the saved list. Checking the linked file…';
+  categoryStatus = ''; categorySyncError = ''; categoryConflict = false;
   applyCategoryText(categoryFile.text); renderCategorySource();
+  if (categoryAccount) { queueCategorySync(); return; }
   try {
     const saved = await getCategoryHandle(categoriesKey);
     if (revision !== categoryRevision) return;
-    // A token prevents a previous file's handle being attached to a newer list
-    // if the browser could save the text but could not replace the old handle.
     if (saved?.token === categoryFile.token && typeof window.showOpenFilePicker === 'function') categoryHandle = saved.handle;
-  } catch { /* The cached list also works without IndexedDB. */ }
+  } catch { /* The cached list works without file permissions. */ }
   if (revision !== categoryRevision) return;
   if (categoryHandle) return refreshCategories(false);
-  categoryStatus = 'Saved in this browser. After editing the file, use Reload file to select it again.';
   renderCategorySource();
 }
 
+async function connectCategoryAccount(user) {
+  flushCategoryEdits();
+  const oldAccount = categoryAccount;
+  const seed = !oldAccount || oldAccount.id === user.permissionId ? categoryFile : null;
+  ++categoryRevision; clearTimeout(categorySaveTimer);
+  categoryAccount = {id: user.permissionId, label: user.emailAddress || user.displayName || 'your Google account'};
+  categoriesKey = categoryProfileKey(appKey, categoryAccount.id);
+  categoryHandle = null; categoryBusy = false; categoryConflict = false; categorySyncError = ''; categoryStatus = '';
+  try { localStorage.setItem(appKey + ':category-account', JSON.stringify(categoryAccount)); }
+  catch { categoryStatus = 'Your account choice could not be remembered in this browser.'; }
+  try { categoryFile = readCategoryCache(localStorage, categoriesKey); } catch { categoryFile = null; }
+  // A second Google account starts with its own cached/Drive list or defaults;
+  // categories from the previous account are never used as its seed.
+  if (!categoryFile && seed) categoryFile = {...seed, name: ACCOUNT_CATEGORY_NAME, token: crypto.randomUUID(), ...(!oldAccount ? {drive: undefined, pending: false} : {})};
+  if (categoryFile) { applyCategoryText(categoryFile.text); cacheCategories(); }
+  else await loadDefaultCategories();
+  renderCategorySource();
+  return syncAccountCategories();
+}
+
+async function syncAccountCategories(prefer = 'merge') {
+  clearTimeout(categorySaveTimer);
+  if (!categoryDriveConnected() || categoryBusy || !categoryFile) return false;
+  const key = categoriesKey, snapshot = structuredClone(categoryFile);
+  categoryBusy = true; categorySyncError = ''; renderCategorySource();
+  let success = false;
+  try {
+    const result = await syncCategoryProfile(drive, snapshot, {prefer});
+    if (key !== categoriesKey) return false;
+    if (categoryFile.text === snapshot.text || prefer === 'remote') {
+      categoryFile = result.file; applyCategoryText(categoryFile.text);
+      if (prefer === 'remote' && categoryEditKey === key) {
+        $('categories-text').value = categoryFile.text; categoryEditText = categoryFile.text;
+      }
+    } else if (result.file.text === snapshot.text) {
+      // Typing during an upload keeps the newer text and remembers the revision
+      // just saved, so the following upload updates the same file safely.
+      categoryFile = {...categoryFile, drive: result.file.drive, pending: true};
+    } else {
+      throw new DriveConflictError('The account list changed while you were editing. Choose which list to keep.');
+    }
+    categoryConflict = false; categoryStatus = ''; cacheCategories(); success = true;
+  } catch (error) {
+    if (key !== categoriesKey) return false;
+    categorySyncError = error instanceof DriveConflictError ? 'Categories changed on another device. Open Edit categories to choose which list to keep.' : error.message;
+    categoryConflict = error instanceof DriveConflictError;
+  } finally {
+    if (key === categoriesKey) {
+      categoryBusy = false; lastCategoryCheck = Date.now(); renderCategorySource();
+      if (success) queueCategorySync();
+    }
+  }
+  return success;
+}
+
 async function chooseCategories() {
-  if (typeof window.showOpenFilePicker !== 'function') { categoryPickSession = activeSession; return $('categories-file').click(); }
+  if (categoryBusy) return;
+  if (typeof window.showOpenFilePicker !== 'function') { categoryPickSession = categoriesKey; return $('categories-file').click(); }
   const revision = ++categoryRevision;
   categoryBusy = true; renderCategorySource();
   try {
     const [handle] = await window.showOpenFilePicker({id: 'cork-categories', multiple: false, types: [{description: 'Categories text file', accept: {'text/plain': ['.txt']}}], ...(categoryHandle ? {startIn: categoryHandle} : {})});
     if (revision !== categoryRevision) return;
-    const file = await handle.getFile();
-    await useCategoryFile(file, handle, revision);
+    await useCategoryFile(await handle.getFile(), handle, revision);
   } catch (error) {
     if (revision === categoryRevision && error.name !== 'AbortError') toast(error.message || 'Could not open the categories file.');
   } finally {
     if (revision === categoryRevision) {
-      categoryBusy = false; renderCategorySource();
+      categoryBusy = false; renderCategorySource(); queueCategorySync();
       if (!categoriesReady) loadCategories();
     }
   }
@@ -474,23 +596,21 @@ async function chooseCategories() {
 async function useCategoryFile(file, handle = null, revision = ++categoryRevision) {
   const data = await readCategoryFile(file);
   if (revision !== categoryRevision) return;
-  categoryFile = {version: 1, ...data, token: crypto.randomUUID()};
-  categoryHandle = handle;
-  categoryStatus = handle ? 'Linked to this file. Changes are checked when you return to the tab.' : 'Saved in this browser. After editing the file, use Reload file to select it again.';
-  applyCategoryText(data.text);
-  const remembered = cacheCategories();
-  renderCategorySource();
-  try {
-    await putCategoryHandle(categoriesKey, handle ? {token: categoryFile.token, handle} : null);
-  } catch {
-    if (revision !== categoryRevision) return;
-    if (remembered) categoryStatus = 'List saved in this browser. The file link could not be remembered; select it again after editing.';
-    renderCategorySource();
-  }
+  const remote = categoryAccount && categoryFile?.drive;
+  categoryFile = {version: 1, ...data, name: categoryAccount ? (remote?.name || ACCOUNT_CATEGORY_NAME) : data.name, token: crypto.randomUUID(), ...(remote ? {drive: remote} : {}), ...(categoryAccount ? {pending: true} : {})};
+  categoryHandle = categoryAccount ? null : handle; categoryStatus = ''; categorySyncError = ''; categoryConflict = false;
+  applyCategoryText(data.text); cacheCategories(); renderCategorySource();
+  try { await putCategoryHandle(categoriesKey, categoryHandle ? {token: categoryFile.token, handle: categoryHandle} : null); }
+  catch { /* The imported text remains available without its local file link. */ }
 }
 
 async function refreshCategories(askPermission = true) {
   if (!categoryFile || categoryBusy) return;
+  if (categoryAccount) {
+    flushCategoryEdits();
+    if (!categoryDriveConnected()) return askPermission ? openDriveDialog() : undefined;
+    return syncAccountCategories();
+  }
   if (!categoryHandle) { if (askPermission) return chooseCategories(); return; }
   const revision = ++categoryRevision;
   categoryBusy = true; lastCategoryCheck = Date.now(); renderCategorySource();
@@ -498,22 +618,45 @@ async function refreshCategories(askPermission = true) {
     const data = await readLinkedCategories(categoryHandle, askPermission);
     if (revision !== categoryRevision) return;
     if (data) {
-      categoryFile = {...categoryFile, ...data};
-      categoryStatus = 'Linked to this file. Changes are checked when you return to the tab.';
+      categoryFile = {...categoryFile, ...data}; categoryStatus = '';
       applyCategoryText(data.text); cacheCategories();
-    } else {
-      categoryStatus = 'Using the saved list. Click Refresh to allow access to the linked file again.';
-    }
+    } else categoryStatus = 'Using the saved list. Click Refresh to allow access to the linked file again.';
   } catch {
     if (revision !== categoryRevision) return;
-    categoryStatus = 'Using the saved list. The linked file couldn’t be read; use Load file to reconnect it.';
+    categoryStatus = 'Using the saved list. The linked file couldn’t be read; import it again to reconnect.';
   } finally {
     if (revision === categoryRevision) { categoryBusy = false; renderCategorySource(); }
   }
 }
 
 function checkCategoryFile() {
-  if (document.visibilityState !== 'hidden' && categoryHandle && !categoryBusy && Date.now() - lastCategoryCheck > 1500) refreshCategories(false);
+  if (document.visibilityState === 'hidden' || categoryBusy || $('categories-dialog').open) return;
+  const wait = categoryAccount ? 30000 : 1500;
+  if ((categoryHandle || categoryDriveConnected()) && Date.now() - lastCategoryCheck > wait) refreshCategories(false);
+}
+
+function editCategories() {
+  if (categoryBusy || !categoriesReady) return;
+  categoryEditKey = categoriesKey; categoryEditText = categoryText;
+  $('categories-text').value = categoryText; renderCategorySource();
+  $('categories-dialog').showModal();
+}
+
+function flushCategoryEdits() {
+  clearTimeout(categoryEditTimer);
+  if (!$('categories-dialog').open) return true;
+  if (categoryEditKey !== categoriesKey) { $('category-edit-status').textContent = 'The Google account changed. Copy your draft, then close and reopen the categories editor.'; return false; }
+  const text = $('categories-text').value;
+  if (text === categoryEditText) return true;
+  try {
+    validateCategoryText(text);
+    if (categoryText !== categoryEditText) throw new Error('This list changed in another tab. Copy your text, then close and reopen the categories editor.');
+    categoryFile = {version: 1, name: categoryFile?.name || 'categories.txt', token: crypto.randomUUID(), text, ...(categoryFile?.drive ? {drive: categoryFile.drive} : {}), ...(categoryAccount ? {pending: true} : {})};
+    categoryHandle = null; categoryStatus = ''; categorySyncError = categoryConflict ? categorySyncError : '';
+    ++categoryRevision; categoryEditText = text;
+    applyCategoryText(text); cacheCategories(); renderCategorySource(); queueCategorySync();
+    return true;
+  } catch (error) { $('category-edit-status').textContent = error.message; return false; }
 }
 
 function renderCategories() {
@@ -1585,28 +1728,35 @@ viewport.addEventListener('wheel', event => {
 
 $('category-search').addEventListener('input', renderCategories);
 $('load-categories').addEventListener('click', chooseCategories);
+$('edit-categories').addEventListener('click', editCategories);
+$('connect-category-drive').addEventListener('click', openDriveDialog);
+$('categories-text').addEventListener('input', () => { clearTimeout(categoryEditTimer); categoryEditTimer = setTimeout(flushCategoryEdits, 250); });
+$('categories-text').addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); event.stopPropagation(); flushCategoryEdits(); } });
+for (const id of ['categories-close', 'categories-done']) $(id).addEventListener('click', () => { if (flushCategoryEdits()) $('categories-dialog').close(); });
+$('categories-dialog').addEventListener('cancel', event => { if (!flushCategoryEdits()) event.preventDefault(); });
+$('category-use-drive').addEventListener('click', () => { if (flushCategoryEdits()) syncAccountCategories('remote'); });
+$('category-keep-mine').addEventListener('click', () => { if (flushCategoryEdits()) syncAccountCategories('local'); });
+$('drive-category-edit').addEventListener('click', () => { $('drive-dialog').close(); editCategories(); });
 $('refresh-categories').addEventListener('click', () => refreshCategories());
 $('categories-file').addEventListener('change', async event => {
   const file = event.target.files[0]; event.target.value = '';
   const target = categoryPickSession; categoryPickSession = null;
-  if (!file || target !== activeSession) return;
+  if (!file || target !== categoriesKey) return;
   const revision = ++categoryRevision;
   categoryBusy = true; renderCategorySource();
   try { await useCategoryFile(file, null, revision); }
   catch (error) { if (revision === categoryRevision) toast(error.message || 'Could not open the categories file.'); }
   finally {
     if (revision === categoryRevision) {
-      categoryBusy = false; renderCategorySource();
+      categoryBusy = false; renderCategorySource(); queueCategorySync();
       if (!categoriesReady) loadCategories();
     }
   }
 });
 $('default-categories').addEventListener('click', () => {
-  categoryFile = null; categoryHandle = null; categoryText = '';
-  try { writeCategoryCache(localStorage, categoriesKey, null); }
-  catch { toast('Default categories will be used for this tab. Browser storage could not remember the change.'); }
+  categoryHandle = null;
   putCategoryHandle(categoriesKey, null).catch(() => {});
-  loadDefaultCategories();
+  loadDefaultCategories(true);
 });
 $('download-categories').addEventListener('click', () => {
   const url = URL.createObjectURL(new Blob([categoryText], {type: 'text/plain;charset=utf-8'}));
@@ -1881,7 +2031,7 @@ async function saveBoardFile(saveAs = false) {
 function updateDriveControls() {
   const connected = drive.connected, linked = entryFor()?.file?.kind === 'drive';
   const blocked = driveBusy || openingBoard || workspaceBlocked || savingBlocked || pdfExporting || fileTasks.has(activeSession.id);
-  $('drive-status').textContent = driveMessage || (!drive.configured
+  $('drive-status').textContent = driveMessage || driveAutoErrors.get(activeSession.id)?.message || (!drive.configured
     ? 'Google Drive has not been enabled for this site yet. Your boards are still saved in this browser.'
     : connected ? `Connected as ${drive.user.displayName || drive.user.emailAddress || 'your Google account'}.`
     : 'Connect to open or save Cork boards in your Google Drive.');
@@ -1893,7 +2043,7 @@ function updateDriveControls() {
   $('drive-setup').hidden = drive.configured;
   $('drive-save').hidden = !drive.configured;
   $('drive-save').disabled = !connected || blocked;
-  $('drive-save').textContent = linked ? 'Save changes to Drive' : 'Save this board to Drive';
+  $('drive-save').textContent = linked ? 'Save now' : 'Save this board to Drive';
   $('drive-save-copy').hidden = !linked || !drive.configured;
   $('drive-save-copy').disabled = !connected || blocked;
   $('drive-files-section').hidden = !connected;
@@ -1976,21 +2126,25 @@ async function openDriveBoard(fileId) {
   finally { openingBoard = false; driveBusy = false; updateBoardFiles(); }
 }
 
-async function saveDriveBoard(saveCopy = false) {
-  const session = activeSession, entry = entryFor(session);
-  if (driveBusy || fileTasks.has(session.id) || workspaceBlocked || savingBlocked || pdfExporting) return false;
-  document.activeElement?.blur(); saveNow(); closeMenu();
+async function saveDriveBoard(saveCopy = false, {session = activeSession, automatic = false} = {}) {
+  const entry = session && entryFor(session);
+  if (!entry || driveBusy || fileTasks.has(session.id) || workspaceBlocked || session.blocked || (session === activeSession && savingBlocked) || pdfExporting) return false;
+  if (!automatic) { if (session === activeSession) { document.activeElement?.blur(); saveNow(); } closeMenu(); }
   if (!drive.connected) {
+    if (automatic) return false;
     await openDriveDialog();
     driveMessage = 'Connect Google Drive, then save the board. Your browser changes have been kept.';
     updateDriveControls(); return false;
   }
-  const snapshot = validateBoard(JSON.parse(JSON.stringify(board)));
+  const snapshot = validateBoard(JSON.parse(JSON.stringify(session === activeSession ? board : session.board)));
   const previous = !saveCopy && entry.file?.kind === 'drive' ? entry.file : null;
+  if (automatic && (!previous || !fileChanged(session))) return true;
   const baseName = snapshot.name.replace(/[^a-z0-9 _-]/gi, '').trim() || 'cork-board';
   const name = `${baseName}${saveCopy ? ' copy' : ''}.json`;
   let saved = false;
+  driveAutoErrors.delete(session.id); driveAutosave.remove(session.id);
   fileTasks.add(session.id); driveBusy = true; driveMessage = 'Saving board to Drive…'; updateBoardFiles();
+  if (session === activeSession) showSavedStatus();
   try {
     const contents = await boardBlob(snapshot);
     const record = await drive.saveBoard(contents, name, previous);
@@ -1999,15 +2153,19 @@ async function saveDriveBoard(saveCopy = false) {
     rememberWorkspace();
     try { await putCategoryHandle(boardKeys(appKey, session.id).file, null); } catch { /* Workspace already identifies Drive as the destination. */ }
     if (session === activeSession) saveNow();
-    saved = true; driveMessage = `Saved ${record.name} to Drive.`; toast(driveMessage);
+    saved = true; driveMessage = `Saved ${record.name} to Drive.`;
+    if (!automatic) toast(driveMessage);
   } catch (error) {
-    driveMessage = error.message; toast(error.message);
-    if (error instanceof DriveAuthError && !$('drive-dialog').open) {
+    const problem = error instanceof DriveConflictError ? new DriveConflictError('This board changed in Drive. Save a Drive copy to keep both versions.') : error;
+    driveAutoErrors.set(session.id, problem); driveMessage = problem.message;
+    if (!automatic) toast(problem.message);
+    if (!automatic && error instanceof DriveAuthError && !$('drive-dialog').open) {
       await openDriveDialog(); driveMessage = error.message;
     }
   } finally {
     fileTasks.delete(session.id); driveBusy = false; updateBoardFiles();
-    if (saved && $('drive-dialog').open) await refreshDriveBoards();
+    if (session === activeSession) showSavedStatus();
+    if (saved && !automatic && $('drive-dialog').open) await refreshDriveBoards();
   }
   return saved;
 }
@@ -2016,10 +2174,10 @@ $('google-drive').addEventListener('click', openDriveDialog);
 $('drive-close').addEventListener('click', () => $('drive-dialog').close());
 $('drive-connect').addEventListener('click', async () => {
   driveMessage = ''; driveBusy = true; updateDriveControls();
-  try { await drive.authorize(); }
+  try { await drive.authorize(); await connectCategoryAccount(drive.user); }
   catch (error) { driveMessage = error.message; }
   finally { driveBusy = false; updateDriveControls(); }
-  if (drive.connected) await refreshDriveBoards();
+  if (drive.connected) { resumeDriveAutosaves(); await refreshDriveBoards(); }
 });
 $('drive-disconnect').addEventListener('click', () => {
   if (driveBusy) return;
@@ -2107,9 +2265,10 @@ window.addEventListener('blur', () => {
   spaceHeld = false; updateHandMode();
   cancelGesture();
 });
-window.addEventListener('pagehide', saveNow);
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); else checkCategoryFile(); });
+window.addEventListener('pagehide', () => { flushCategoryEdits(); saveNow(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushCategoryEdits(); saveNow(); } else checkCategoryFile(); });
 window.addEventListener('focus', checkCategoryFile);
+window.addEventListener('online', () => { resumeDriveAutosaves(); if (categoryDriveConnected() && !categoryConflict) { categorySyncError = ''; syncAccountCategories(); } });
 window.addEventListener('storage', event => {
   if (event.key === `${appKey}:ui-theme`) { uiThemePreference = ['light', 'dark'].includes(event.newValue) ? event.newValue : 'system'; applyInterfaceTheme(); return; }
   if (event.key === categoriesKey) { loadCategories(); return; }
