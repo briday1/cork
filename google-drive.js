@@ -32,16 +32,76 @@ export function driveFileRecord(metadata, accountId, etag = '') {
   return {kind: 'drive', id: metadata.id, accountId, name: metadata.name, version: String(metadata.version), modified, size, etag};
 }
 
-// All authorization stays in memory. This module never writes browser storage.
+// A short-lived token may survive reloads in this tab's sessionStorage only.
+// It is never written to board files, localStorage, or IndexedDB.
 export class GoogleDrive {
-  constructor(config, {fetch = globalThis.fetch.bind(globalThis), now = Date.now, identity = () => globalThis.google?.accounts?.oauth2, onChange = () => {}} = {}) {
+  constructor(config, {fetch = globalThis.fetch.bind(globalThis), now = Date.now, identity = () => globalThis.google?.accounts?.oauth2, onChange = () => {}, storage = () => globalThis.sessionStorage, sessionKey = 'cork:google-drive-session'} = {}) {
     this.config = config; this.fetch = fetch; this.now = now; this.identity = identity; this.onChange = onChange;
+    this.storage = storage; this.sessionKey = sessionKey;
     this.token = ''; this.expiresAt = 0; this.user = null; this.generation = 0;
   }
 
   get configured() { return /^\d+-[\w-]+\.apps\.googleusercontent\.com$/.test(this.config.clientId || ''); }
   get pickerConfigured() { return Boolean(this.config.apiKey && /^\d+$/.test(this.config.appId || '')); }
   get connected() { return Boolean(this.token && this.expiresAt > this.now() && this.user); }
+
+  forgetSession() {
+    try { this.storage()?.removeItem(this.sessionKey); } catch { /* Memory-only authorization still works when browser storage is blocked. */ }
+  }
+
+  rememberSession() {
+    try {
+      this.storage()?.setItem(this.sessionKey, JSON.stringify({version: 1, clientId: this.config.clientId, token: this.token, expiresAt: this.expiresAt, accountId: this.user.permissionId}));
+    } catch { this.forgetSession(); }
+  }
+
+  clearAuthorization() {
+    this.token = ''; this.expiresAt = 0;
+    clearTimeout(this.expiryTimer); this.forgetSession();
+  }
+
+  scheduleExpiry() {
+    clearTimeout(this.expiryTimer);
+    this.expiryTimer = setTimeout(() => { this.clearAuthorization(); this.onChange(); }, Math.max(0, this.expiresAt - this.now()));
+    this.expiryTimer.unref?.();
+  }
+
+  async restore() {
+    if (!this.configured) return null;
+    if (this.connected) return this.user;
+    if (this.pending) return this.pending.promise;
+    if (this.restoring) return this.restoring;
+    let saved;
+    try {
+      const value = this.storage()?.getItem(this.sessionKey);
+      if (!value) return null;
+      saved = JSON.parse(value);
+      if (saved?.version !== 1 || saved.clientId !== this.config.clientId || typeof saved.token !== 'string' || !saved.token || typeof saved.accountId !== 'string' || !saved.accountId || !Number.isFinite(saved.expiresAt) || saved.expiresAt <= this.now()) throw new Error('Invalid or expired session');
+    } catch { this.forgetSession(); return null; }
+    const generation = ++this.generation;
+    this.token = saved.token; this.expiresAt = saved.expiresAt; this.user = null;
+    const restoring = (async () => {
+      try {
+        await this.ready();
+        if (generation !== this.generation) return null;
+        const response = await this.request(`${API}/about?fields=user(permissionId,displayName,emailAddress)`);
+        const {user} = await response.json();
+        if (generation !== this.generation) return null;
+        if (user?.permissionId !== saved.accountId) throw new DriveAuthError('The remembered Google account could not be verified. Reconnect Google Drive to continue.');
+        this.user = user; this.scheduleExpiry(); this.onChange();
+        return user;
+      } catch (error) {
+        if (generation !== this.generation) return null;
+        // Offline failures keep the unexpired tab session available for retry.
+        this.token = ''; this.expiresAt = 0;
+        if (error instanceof DriveAuthError) this.forgetSession();
+        this.onChange(); throw error;
+      }
+    })();
+    this.restoring = restoring;
+    try { return await restoring; }
+    finally { if (this.restoring === restoring) this.restoring = null; }
+  }
 
   async ready() {
     if (!this.configured) throw new Error('Google Drive has not been enabled for this site yet. Your boards are still saved in this browser.');
@@ -62,9 +122,10 @@ export class GoogleDrive {
   authorize() {
     if (!this.client) return Promise.reject(new DriveAuthError('Open Google Drive and wait for the Connect button to become available.'));
     if (this.pending) return this.pending.promise;
+    this.generation++;
     const promise = new Promise((resolve, reject) => { this.pending = {resolve, reject}; });
     this.pending.promise = promise;
-    try { this.client.requestAccessToken({prompt: this.user ? '' : 'select_account', ...(this.user?.emailAddress ? {hint: this.user.emailAddress} : {})}); }
+    try { this.client.requestAccessToken({prompt: this.user ? '' : 'select_account', ...(this.user?.emailAddress ? {login_hint: this.user.emailAddress} : {})}); }
     catch { this.authorizationFailed(new DriveAuthError('Google sign-in could not open. Try Connect again.')); }
     return promise;
   }
@@ -72,7 +133,7 @@ export class GoogleDrive {
   async receiveToken(response) {
     const pending = this.pending;
     if (!pending) return;
-    if (response.error || !response.access_token || !(Number(response.expires_in) > 30) || !String(response.scope || '').split(' ').includes(DRIVE_SCOPE)) {
+    if (response.error || !response.access_token || !Number.isFinite(Number(response.expires_in)) || !(Number(response.expires_in) > 30) || !String(response.scope || '').split(' ').includes(DRIVE_SCOPE)) {
       return this.authorizationFailed(new DriveAuthError('Google Drive access was not granted. Your browser copy is unchanged.'));
     }
     this.generation++; this.token = response.access_token;
@@ -83,16 +144,13 @@ export class GoogleDrive {
       if (this.pending !== pending) return;
       if (!user?.permissionId) throw new DriveAuthError('Google could not identify the connected account. Try Connect again.');
       this.user = user;
-      clearTimeout(this.expiryTimer);
-      this.expiryTimer = setTimeout(() => { this.token = ''; this.onChange(); }, Math.max(0, this.expiresAt - this.now()));
-      this.expiryTimer.unref?.();
+      this.rememberSession(); this.scheduleExpiry();
       this.pending = null; this.onChange(); pending.resolve(user);
     } catch (error) { if (this.pending === pending) this.authorizationFailed(error); }
   }
 
   authorizationFailed(error) {
-    this.token = ''; this.expiresAt = 0;
-    clearTimeout(this.expiryTimer);
+    this.clearAuthorization();
     const pending = this.pending; this.pending = null; this.onChange(); pending?.reject(error);
   }
 
@@ -105,7 +163,7 @@ export class GoogleDrive {
 
   async request(url, options = {}) {
     if (!this.token || this.expiresAt <= this.now()) {
-      this.token = ''; this.onChange();
+      this.clearAuthorization(); this.onChange();
       throw new DriveAuthError('Reconnect Google Drive to continue. Your changes are still saved in this browser.');
     }
     const generation = this.generation, headers = new Headers(options.headers);
@@ -115,7 +173,7 @@ export class GoogleDrive {
     catch { throw new Error('Google Drive could not be reached. Your browser copy is unchanged; try again when you are online.'); }
     if (generation !== this.generation) throw new DriveAuthError('The Drive connection changed. Reconnect before continuing.');
     if (response.status === 401) {
-      this.token = ''; this.onChange();
+      this.clearAuthorization(); this.onChange();
       throw new DriveAuthError('Reconnect Google Drive to continue. Your changes are still saved in this browser.');
     }
     if (response.status === 409 || response.status === 412) throw new DriveConflictError('This file changed in Drive. Your browser changes have been kept.');

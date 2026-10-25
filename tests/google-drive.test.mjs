@@ -6,14 +6,14 @@ const config = {clientId: '12345-cork.apps.googleusercontent.com', apiKey: '', a
 const info = (version = '1', overrides = {}) => ({id: 'board-id', name: 'Board.json', size: '20', modifiedTime: '2026-10-25T16:00:00.000Z', version, capabilities: {canEdit: true}, ...overrides});
 const json = (data, headers = {}) => new Response(JSON.stringify(data), {headers: {'Content-Type': 'application/json', ...headers}});
 
-async function connected(responses = [], {clock = () => 1000} = {}) {
+async function connected(responses = [], {clock = () => 1000, storage, sessionKey} = {}) {
   const requests = []; let tokenOptions, authOptions, revoked;
   const identity = {
     initTokenClient(options) { tokenOptions = options; return {requestAccessToken(options) { authOptions = options; queueMicrotask(() => tokenOptions.callback({access_token: 'test-token', expires_in: 3600, scope: DRIVE_SCOPE})); }}; },
     revoke(token) { revoked = token; },
   };
   const client = new GoogleDrive(config, {
-    now: clock, identity: () => identity,
+    now: clock, identity: () => identity, storage, sessionKey,
     fetch: async (url, options) => {
       requests.push({url, ...options});
       if (url.includes('/about?')) return json({user: {permissionId: 'account-a', displayName: 'Test writer'}});
@@ -26,6 +26,125 @@ async function connected(responses = [], {clock = () => 1000} = {}) {
   await client.ready(); await client.authorize(); requests.length = 0;
   return {client, requests, get tokenOptions() { return tokenOptions; }, get authOptions() { return authOptions; }, get revoked() { return revoked; }};
 }
+
+function tabStorage() {
+  const values = new Map();
+  return {getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key)};
+}
+
+function reloadedClient(storage, fetch, extra = {}) {
+  return new GoogleDrive(config, {
+    now: () => 1000, storage: () => storage,
+    identity: () => ({initTokenClient: () => ({requestAccessToken: () => assert.fail('Restoring a tab must not open sign-in')})}),
+    fetch, ...extra,
+  });
+}
+
+test('a refreshed tab restores unexpired Drive access without another sign-in', async () => {
+  const storage = tabStorage();
+  const auth = await connected([], {storage: () => storage});
+  const saved = JSON.parse(storage.getItem(auth.client.sessionKey));
+  assert.equal(saved.token, 'test-token'); assert.equal(saved.accountId, 'account-a');
+  let requests = 0;
+  const restored = reloadedClient(storage, async (url, options) => {
+    requests++;
+    assert.match(url, /\/about\?/);
+    assert.equal(options.headers.get('Authorization'), 'Bearer test-token');
+    assert.equal(restored.connected, false, 'cached account data cannot authorize saves before Google verifies it');
+    return json({user: {permissionId: 'account-a', emailAddress: 'writer@example.test'}});
+  });
+  const [first, second] = await Promise.all([restored.restore(), restored.restore()]);
+  assert.equal(first.permissionId, 'account-a'); assert.equal(second.permissionId, 'account-a');
+  assert.equal(requests, 1); assert.equal(restored.connected, true);
+  assert.equal(restored.expiresAt, saved.expiresAt, 'refreshing cannot extend token lifetime');
+});
+
+test('expired, malformed, and different OAuth-client sessions never contact Google', async () => {
+  for (const change of [saved => ({...saved, expiresAt: 999}), saved => ({...saved, clientId: 'another-client'}), saved => ({...saved, token: ''}), () => null, () => 'broken JSON']) {
+    const storage = tabStorage();
+    const auth = await connected([], {storage: () => storage});
+    const saved = change(JSON.parse(storage.getItem(auth.client.sessionKey)));
+    storage.setItem(auth.client.sessionKey, typeof saved === 'string' ? saved : JSON.stringify(saved));
+    const restored = reloadedClient(storage, () => assert.fail('Invalid cached sessions cannot make Drive requests'));
+    assert.equal(await restored.restore(), null); assert.equal(restored.connected, false);
+    assert.equal(storage.getItem(auth.client.sessionKey), null);
+  }
+});
+
+test('rejected tokens and account mismatches clear the tab session before any file access', async () => {
+  for (const response of [new Response(null, {status: 401}), json({user: {permissionId: 'account-b'}})]) {
+    const storage = tabStorage();
+    const auth = await connected([], {storage: () => storage});
+    let requests = 0;
+    const restored = reloadedClient(storage, async url => { requests++; assert.match(url, /\/about\?/); return response; });
+    await assert.rejects(restored.restore(), DriveAuthError);
+    assert.equal(restored.connected, false); assert.equal(requests, 1);
+    assert.equal(storage.getItem(auth.client.sessionKey), null);
+    await assert.rejects(restored.listBoards(), DriveAuthError);
+    assert.equal(requests, 1);
+  }
+});
+
+test('disconnecting during restoration cannot reconnect the old account', async () => {
+  const storage = tabStorage();
+  const auth = await connected([], {storage: () => storage});
+  let finish;
+  let started;
+  const requestStarted = new Promise(resolve => { started = resolve; });
+  const restored = reloadedClient(storage, () => { started(); return new Promise(resolve => { finish = resolve; }); });
+  const pending = restored.restore();
+  await requestStarted;
+  restored.disconnect(); finish(json({user: {permissionId: 'account-a'}}));
+  assert.equal(await pending, null); assert.equal(restored.connected, false); assert.equal(restored.user, null);
+  assert.equal(storage.getItem(auth.client.sessionKey), null);
+});
+
+test('offline restoration keeps the unexpired tab session for a later retry', async () => {
+  const storage = tabStorage();
+  const auth = await connected([], {storage: () => storage});
+  let offline = true;
+  const restored = reloadedClient(storage, async () => {
+    if (offline) throw new TypeError('offline');
+    return json({user: {permissionId: 'account-a'}});
+  });
+  await assert.rejects(restored.restore(), /could not be reached/);
+  assert.equal(restored.connected, false); assert.ok(storage.getItem(auth.client.sessionKey));
+  offline = false;
+  assert.equal((await restored.restore()).permissionId, 'account-a'); assert.equal(restored.connected, true);
+});
+
+test('blocked session storage leaves manual authorization working in memory', async () => {
+  const auth = await connected([], {storage: () => { throw new Error('blocked storage'); }});
+  assert.equal(auth.client.connected, true);
+  const restored = reloadedClient(null, () => assert.fail('No saved session must not access Drive'), {storage: () => { throw new Error('blocked storage'); }});
+  assert.equal(await restored.restore(), null);
+  auth.client.disconnect(); assert.equal(auth.client.connected, false);
+});
+
+test('expired, rejected, and disconnected live sessions remove saved credentials', async () => {
+  for (const outcome of ['expired', 'rejected', 'disconnected']) {
+    let time = 1000;
+    const storage = tabStorage();
+    const auth = await connected(outcome === 'rejected' ? [new Response(null, {status: 401})] : [], {storage: () => storage, clock: () => time});
+    assert.ok(storage.getItem(auth.client.sessionKey));
+    if (outcome === 'disconnected') auth.client.disconnect();
+    else {
+      if (outcome === 'expired') time += 3600 * 1000;
+      await assert.rejects(auth.client.listBoards(), DriveAuthError);
+    }
+    assert.equal(storage.getItem(auth.client.sessionKey), null);
+    assert.equal(auth.client.connected, false);
+  }
+});
+
+test('reconnecting a remembered account uses the supported Google login hint', async () => {
+  const auth = await connected();
+  auth.client.user.emailAddress = 'writer@example.test';
+  await auth.client.authorize();
+  assert.equal(auth.authOptions.prompt, '');
+  assert.equal(auth.authOptions.login_hint, 'writer@example.test');
+  assert.equal(auth.authOptions.hint, undefined);
+});
 
 test('Drive stays inactive without a site OAuth client and requests only per-file access', async () => {
   const inactive = new GoogleDrive({clientId: ''}, {fetch: () => assert.fail('Unconfigured Drive must not contact Google')});

@@ -27,7 +27,7 @@ const sessions = new Map(), fileTasks = new Set();
 let textTarget = 'new', textSelection = '';
 let openingBoard = false, categoryPickSession = null, imagePickSession = null, folderPickSession = null;
 let driveBusy = false, driveReady = false, driveMessage = '', driveListRevision = 0;
-const drive = new GoogleDrive(googleDriveConfig, {onChange: () => { if (!drive.connected) driveMessage = ''; updateBoardFiles(); renderCategorySource(); showSavedStatus(); }});
+const drive = new GoogleDrive(googleDriveConfig, {sessionKey: `${appKey}:google-drive-session`, onChange: () => { if (!drive.connected) driveMessage = ''; updateBoardFiles(); renderCategorySource(); showSavedStatus(); }});
 const driveAutoErrors = new Map();
 const driveAutosave = new DriveAutoSaveQueue({ready: autoDriveReady, save: id => saveDriveBoard(false, {session: sessions.get(id), automatic: true})});
 let pendingCloseId = null;
@@ -2065,6 +2065,17 @@ async function openDriveDialog() {
   } catch (error) { driveMessage = error.message; updateDriveControls(); }
 }
 
+async function restoreDriveConnection() {
+  if (driveBusy || drive.connected) return;
+  driveBusy = true;
+  try {
+    const user = await drive.restore();
+    if (user) { driveReady = true; await connectCategoryAccount(user); }
+  } catch (error) { driveMessage = error.message; }
+  finally { driveBusy = false; updateBoardFiles(); renderCategorySource(); showSavedStatus(); }
+  if (drive.connected) resumeDriveAutosaves();
+}
+
 async function refreshDriveBoards(pageToken = '') {
   if (!drive.connected || driveBusy) return;
   const revision = ++driveListRevision;
@@ -2268,7 +2279,11 @@ window.addEventListener('blur', () => {
 window.addEventListener('pagehide', () => { flushCategoryEdits(); saveNow(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { flushCategoryEdits(); saveNow(); } else checkCategoryFile(); });
 window.addEventListener('focus', checkCategoryFile);
-window.addEventListener('online', () => { resumeDriveAutosaves(); if (categoryDriveConnected() && !categoryConflict) { categorySyncError = ''; syncAccountCategories(); } });
+window.addEventListener('online', () => {
+  if (!drive.connected) { restoreDriveConnection(); return; }
+  resumeDriveAutosaves();
+  if (categoryDriveConnected() && !categoryConflict) { categorySyncError = ''; syncAccountCategories(); }
+});
 window.addEventListener('storage', event => {
   if (event.key === `${appKey}:ui-theme`) { uiThemePreference = ['light', 'dark'].includes(event.newValue) ? event.newValue : 'system'; applyInterfaceTheme(); return; }
   if (event.key === categoriesKey) { loadCategories(); return; }
@@ -2303,5 +2318,5 @@ entryFor().name = board.name;
 renderBoardTabs(); updateHistory(); rememberWorkspace(); restoreBoardHandle(activeSession);
 setSidebar(!compactLayout.matches && desktopSidebarOpen);
 updateVisibleHeight();
-loadCategories();
+loadCategories().then(restoreDriveConnection);
 if (startupProblem || activeSession.problem) { setSaveStatus('Saved board unavailable — saving paused', true); toast(startupProblem || activeSession.problem); }
