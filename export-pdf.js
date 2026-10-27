@@ -33,8 +33,9 @@ export function snapshotNotes(notes, elements) {
   });
 }
 
-export async function createBoardPdf(name, notes, connections = [], onProgress = () => {}) {
-  const layout = boardExportLayout(notes);
+export async function createBoardPdf(name, notes, connections = [], tapes = [], onProgress = () => {}) {
+  const tapeBounds = tapes.map(t => ({x:Math.min(t.x1,t.x2)-16, y:Math.min(t.y1,t.y2)-16, width:Math.abs(t.x2-t.x1)+32, height:Math.abs(t.y2-t.y1)+32, tilt:0}));
+  const layout = boardExportLayout([...notes, ...tapeBounds]);
   if (!layout) throw new Error('Add a note before exporting a PDF.');
   const pdf = await PDFDocument.create();
   pdf.setTitle(name);
@@ -47,6 +48,22 @@ export async function createBoardPdf(name, notes, connections = [], onProgress =
   stage.style.cssText = 'position:fixed;left:-100000px;top:0;pointer-events:none;';
   document.body.append(stage);
   try {
+    const colors = {red:'#b5252e', blue:'#2454a3', yellow:'#f1d43b', white:'#f0eee7', black:'#232527'};
+    for (const tape of tapes) {
+      const length = Math.hypot(tape.x2-tape.x1, tape.y2-tape.y1);
+      if (length < 1) continue;
+      const ratio = Math.min(3, 8192 / length);
+      const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.ceil(length * ratio)); canvas.height = Math.max(1, Math.ceil(32 * ratio));
+      const ctx = canvas.getContext('2d'); ctx.scale(ratio,ratio);
+      const seed = [...tape.id].reduce((n,c) => (n*31+c.charCodeAt(0))>>>0, 7), a=2+seed%5, b=2+(seed>>>4)%5;
+      ctx.beginPath(); ctx.moveTo(a,0); for (const [x,y] of [[length-b,0],[length-2,6],[length-b,11],[length-1,16],[length-b,22],[length-3,27],[length-b,32],[a,32],[2,27],[a,22],[1,16],[a,11],[2,5]]) ctx.lineTo(x,y); ctx.closePath(); ctx.fillStyle=colors[tape.color]; ctx.fill();
+      ctx.fillStyle=['white','yellow'].includes(tape.color)?'#222':'#fff'; ctx.font='600 15px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; if (tape.text) ctx.fillText(tape.text,length/2,16,Math.max(1,length-20));
+      const png = await new Promise((resolve,reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not render tape.')), 'image/png'));
+      const image = await pdf.embedPng(await png.arrayBuffer());
+      const angle = Math.atan2(tape.y2-tape.y1,tape.x2-tape.x1), scale=layout.scale;
+      page.drawImage(image, {x:(tape.x1-layout.left-16*Math.sin(angle))*scale, y:(layout.bottom-tape.y1-16*Math.cos(angle))*scale, width:length*scale, height:32*scale, rotate:degrees(-angle*180/Math.PI)});
+      canvas.width=canvas.height=1;
+    }
     for (let index = 0; index < notes.length; index++) {
       const note = notes[index];
       stage.replaceChildren(note.element);

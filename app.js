@@ -52,6 +52,7 @@ let toastTimer;
 let folderPickTarget = null;
 let pdfExporting = false;
 let stringMode = false, stringStart = null, stringFrame = 0, stringLayer;
+let tapeMode = false, selectedTape = null, tapeLayer;
 let savingBlocked = false;
 let startupProblem = '';
 let undoStack = [];
@@ -807,11 +808,46 @@ function updateNoteColors() {
 
 function updateCounts() {
   $('note-count').textContent = `${board.notes.length} ${board.notes.length === 1 ? 'note' : 'notes'}`;
-  $('export-pdf').disabled = pdfExporting || !board.notes.length;
+  $('export-pdf').disabled = pdfExporting || (!board.notes.length && !board.tapes.length);
   $('add-string').disabled = board.notes.length < 2;
   if (board.notes.length < 2 && stringMode) setStringMode(false);
   updateSelection();
 }
+
+
+const TAPE_COLORS = {red:'#b5252e', blue:'#2454a3', yellow:'#f1d43b', white:'#f0eee7', black:'#232527'};
+function setTapeMode(active, keepSelection = false) {
+  tapeMode = active; if (!keepSelection) selectedTape = null;
+  viewport.classList.toggle('is-taping', active);
+  $('add-tape').setAttribute('aria-pressed', String(active));
+  const tape = board.tapes?.find(t => t.id === selectedTape);
+  $('tape-bar').hidden = !active && !tape;
+  $('tape-text-label').hidden = !tape; $('tape-delete').hidden = !tape; $('tape-hint').hidden = !active;
+  if (tape) { $('tape-color').value = tape.color; $('tape-text').value = tape.text; }
+  if (tapeLayer?.isConnected) renderTapes();
+}
+function renderTapes(preview = null) {
+  if (!tapeLayer?.isConnected) { tapeLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); tapeLayer.classList.add('tape-layer'); world.prepend(tapeLayer); }
+  tapeLayer.replaceChildren();
+  const svg = (tag, attrs) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k,v] of Object.entries(attrs)) el.setAttribute(k,v); return el; };
+  for (const tape of [...(board.tapes || []), ...(preview ? [preview] : [])]) {
+    const length = Math.hypot(tape.x2-tape.x1,tape.y2-tape.y1), angle = Math.atan2(tape.y2-tape.y1,tape.x2-tape.x1)*180/Math.PI;
+    const group = svg('g', {class:`tape-piece${selectedTape === tape.id ? ' is-selected' : ''}`, transform:`translate(${tape.x1} ${tape.y1}) rotate(${angle})`, tabindex:'0', role:'button', 'aria-label':'Tape. Select to edit or delete.'});
+    const seed = [...tape.id].reduce((n,c) => (n*31+c.charCodeAt(0))>>>0, 7);
+    const a = 2 + seed%5, b = 2 + (seed>>>4)%5;
+    group.append(svg('path', {d:`M ${a} -16 L ${length-b} -16 L ${length-2} -10 L ${length-b} -5 L ${length-1} 0 L ${length-b} 6 L ${length-3} 11 L ${length-b} 16 L ${a} 16 L 2 11 L ${a} 6 L 1 0 L ${a} -5 L 2 -11 Z`, fill:TAPE_COLORS[tape.color], stroke:'#000', 'stroke-opacity':'.16', 'stroke-width':'1'}));
+    const text = svg('text', {x:length/2, y:0, 'text-anchor':'middle', 'dominant-baseline':'central', fill:['white','yellow'].includes(tape.color)?'#222':'#fff', 'font-family':'sans-serif', 'font-size':'15', 'font-weight':'600', 'pointer-events':'none', textLength:Math.max(1, length-20), lengthAdjust:'spacingAndGlyphs'});
+    if (tape.text) { text.removeAttribute('textLength'); if (tape.text.length*9 > length-20) text.setAttribute('textLength', Math.max(1,length-20)); text.textContent=tape.text; group.append(text); }
+    if (tape.id !== 'preview') { group.addEventListener('click', e => { e.stopPropagation(); if (handMode || spaceHeld) return; setSelected(null); selectedTape=tape.id; setTapeMode(false,true); }); group.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedTape=tape.id; setTapeMode(false,true); } }); }
+    tapeLayer.append(group);
+  }
+}
+$('add-tape').addEventListener('click', () => { cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode=false; spaceHeld=false; updateHandMode(); setSelected(null); setTapeMode(!tapeMode); if (compactLayout.matches) setSidebar(false); });
+$('tape-done').addEventListener('click', () => setTapeMode(false));
+$('tape-color').addEventListener('change', () => { const tape=board.tapes.find(t => t.id===selectedTape); if (tape) { record(); tape.color=$('tape-color').value; renderTapes(); saveSoon(); } });
+$('tape-text').addEventListener('focus', record);
+$('tape-text').addEventListener('input', () => { const tape=board.tapes.find(t => t.id===selectedTape); if (tape) { tape.text=$('tape-text').value; renderTapes(); saveSoon(); } });
+$('tape-delete').addEventListener('click', () => { if (!selectedTape) return; record(); board.tapes=board.tapes.filter(t => t.id!==selectedTape); setTapeMode(false); updateCounts(); saveNow(); });
 
 function queueStrings() {
   cancelAnimationFrame(stringFrame);
@@ -819,7 +855,7 @@ function queueStrings() {
 }
 
 function setStringMode(active) {
-  if (active) { setSelectMode(false); setSelected(null); }
+  if (active) { setTapeMode(false); setSelectMode(false); setSelected(null); }
   stringMode = active; stringStart = null;
   viewport.classList.toggle('is-connecting', active);
   $('add-string').setAttribute('aria-pressed', String(active));
@@ -1361,10 +1397,11 @@ function buildNote(note, index) {
 }
 
 function renderBoard() {
+  selectedTape = null; setTapeMode(false);
   world.replaceChildren(); noteElements.clear();
   $('board-name').value = board.name;
   board.notes.forEach(buildNote);
-  renderStrings();
+  renderStrings(); renderTapes();
   renderCategories(); renderPalette(); updateCounts(); applyView();
 }
 
@@ -1399,6 +1436,7 @@ function setSidebar(open, remember = false) {
 
 function startPlacement(type, category = '', assetId = null, folderName = '') {
   cancelGesture();
+  setTapeMode(false);
   setSelectMode(false);
   setStringMode(false);
   handMode = false; spaceHeld = false;
@@ -1503,8 +1541,8 @@ function changeZoom(factor, point = {x: viewport.clientWidth / 2, y: viewport.cl
 }
 
 function fitView() {
-  if (!board.notes.length) { board.view = {x: 0, y: 0, zoom: 1}; applyView(); saveSoon(); return; }
-  const rects = board.notes.map(n => ({x: n.x, y: n.y, w: noteElements.get(n.id).offsetWidth, h: noteElements.get(n.id).offsetHeight}));
+  if (!board.notes.length && !board.tapes.length) { board.view = {x: 0, y: 0, zoom: 1}; applyView(); saveSoon(); return; }
+  const rects = [...board.notes.map(n => ({x: n.x, y: n.y, w: noteElements.get(n.id).offsetWidth, h: noteElements.get(n.id).offsetHeight})), ...board.tapes.map(t => ({x:Math.min(t.x1,t.x2)-16, y:Math.min(t.y1,t.y2)-16, w:Math.abs(t.x2-t.x1)+32, h:Math.abs(t.y2-t.y1)+32}))];
   const left = Math.min(...rects.map(r => r.x)); const top = Math.min(...rects.map(r => r.y));
   const right = Math.max(...rects.map(r => r.x + r.w)); const bottom = Math.max(...rects.map(r => r.y + r.h));
   const zoom = Math.max(.25, Math.min(1, (viewport.clientWidth - 70) / (right - left), (viewport.clientHeight - 150) / (bottom - top)));
@@ -1561,6 +1599,13 @@ viewport.addEventListener('pointerdown', event => {
   selectionPointerId = null;
   if (event.target.closest('.board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
   if (event.button !== 0 && event.button !== 1) return;
+  if (tapeMode && event.button === 0) {
+    const point = localPoint(event);
+    const start = screenToWorld(point, board.view);
+    gesture = {type: 'tape', pointerId: event.pointerId, start: point, worldStart: start, moved: false};
+    viewport.setPointerCapture(event.pointerId); event.preventDefault(); event.stopPropagation(); return;
+  }
+  if (event.target.closest('.tape-piece') && !handMode && !spaceHeld) return;
   const noteElement = event.target.closest('.note');
   if (stringMode && noteElement) { event.preventDefault(); event.stopPropagation(); return; }
   const pan = handMode || spaceHeld || event.button === 1;
@@ -1656,6 +1701,9 @@ viewport.addEventListener('pointermove', event => {
       board.notes.forEach((note, i) => { noteElements.get(note.id).style.zIndex = String(i + 1); });
     }
   }
+  if (gesture.type === 'tape') {
+    renderTapes({id:'preview', color:$('tape-color').value, text:'', x1:gesture.worldStart.x, y1:gesture.worldStart.y, x2:screenToWorld(point, board.view).x, y2:screenToWorld(point, board.view).y}); return;
+  }
   if (gesture.type === 'place') { movePreview(point); return; }
   if (gesture.type === 'marquee') {
     const bounds = selectionBounds(gesture.start, point), box = $('selection-box');
@@ -1705,6 +1753,13 @@ function endGesture(event) {
     selected.delete(gesture.deselectOnClick); updateSelection();
   }
   const changed = gesture.moved && ['notes', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type);
+  if (gesture.type === 'tape') {
+    const end = screenToWorld(localPoint(event), board.view), start = gesture.worldStart;
+    if (event.type === 'pointerup' && Math.hypot(end.x-start.x, end.y-start.y) >= 20) {
+      record(); const tape = {id:crypto.randomUUID(), color:$('tape-color').value, text:'', x1:start.x, y1:start.y, x2:end.x, y2:end.y};
+      board.tapes.push(tape); selectedTape = tape.id; setTapeMode(false, true); updateCounts(); saveNow();
+    } else renderTapes();
+  }
   if (gesture.type === 'place' && event.type === 'pointerup') placeNote(localPoint(event));
   clearGestureVisuals();
   gesture = null;
@@ -1795,6 +1850,7 @@ $('folder-file').addEventListener('change', event => {
 });
 $('folder-file').addEventListener('cancel', () => { folderPickTarget = null; });
 $('add-string').addEventListener('click', () => {
+  setTapeMode(false);
   const active = !stringMode; cancelPlacement(); handMode = false; spaceHeld = false; updateHandMode(); setStringMode(active);
   if (compactLayout.matches) setSidebar(false);
 });
@@ -1860,8 +1916,8 @@ $('zoom-in').addEventListener('click', () => changeZoom(1.2));
 $('zoom-out').addEventListener('click', () => changeZoom(1 / 1.2));
 $('zoom-reset').addEventListener('click', () => { board.view = zoomAt(board.view, 1, {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2}); applyView(); saveSoon(); });
 $('fit-view').addEventListener('click', fitView);
-$('pan-mode').addEventListener('click', () => { cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode = !handMode; updateHandMode(); });
-$('select-mode').addEventListener('click', () => { cancelGesture(); setSelectMode(!selectMode); });
+$('pan-mode').addEventListener('click', () => { setTapeMode(false); cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode = !handMode; updateHandMode(); });
+$('select-mode').addEventListener('click', () => { setTapeMode(false); cancelGesture(); setSelectMode(!selectMode); });
 $('delete-selection').addEventListener('click', removeSelection);
 $('clear-selection').addEventListener('click', () => setSelected(null));
 $('reset-view').addEventListener('click', () => { board.view = {x: 0, y: 0, zoom: 1}; applyView(); saveSoon(); closeMenu(); });
@@ -1897,7 +1953,7 @@ $('export-board').addEventListener('click', async () => {
 });
 $('export-pdf').addEventListener('click', async () => {
   closeMenu();
-  if (pdfExporting || openingBoard || !board.notes.length) return;
+  if (pdfExporting || openingBoard || (!board.notes.length && !board.tapes.length)) return;
   pdfExporting = true; updateBoardFiles();
   $('export-pdf').disabled = true;
   $('export-pdf').setAttribute('aria-busy', 'true');
@@ -1908,7 +1964,7 @@ $('export-pdf').addEventListener('click', async () => {
     await Promise.all([...world.querySelectorAll('.note-image')].map(image => image.decode()));
     const name = board.name;
     const notes = snapshotNotes(board.notes, noteElements);
-    const bytes = await createBoardPdf(name, notes, structuredClone(board.connections), (done, total) => {
+    const bytes = await createBoardPdf(name, notes, structuredClone(board.connections), structuredClone(board.tapes), (done, total) => {
       if (total > 5) toast(`Preparing PDF… ${done} of ${total} notes`);
     });
     const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'}));
@@ -2270,7 +2326,7 @@ $('import-file').addEventListener('change', async event => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !document.querySelector('dialog[open]')) { event.preventDefault(); saveBoardFile(event.shiftKey); return; }
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
+  if (event.key === 'Escape') { setTapeMode(false); cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); return; }

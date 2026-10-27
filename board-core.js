@@ -80,7 +80,7 @@ export function categoryColor(name, categories, palette = 'hsv') {
 }
 
 export function blankBoard() {
-  return {version: 1, name: 'My board', palette: 'hsv', theme: 'natural', notes: [], connections: [], view: {x: 0, y: 0, zoom: 1}};
+  return {version: 1, name: 'My board', palette: 'hsv', theme: 'natural', notes: [], connections: [], tapes: [], view: {x: 0, y: 0, zoom: 1}};
 }
 
 export const NOTE_FONTS = {
@@ -157,6 +157,13 @@ export function validateBoard(data) {
     pairs.add(pair); connectionIds.add(connection.id);
     return {id: connection.id, from: connection.from, to: connection.to};
   });
+  if (data.tapes !== undefined && (!Array.isArray(data.tapes) || data.tapes.length > 5000)) throw new Error('This board contains invalid tape. Nothing was changed.');
+  const tapeIds = new Set();
+  const tapes = (data.tapes || []).map(t => {
+    if (!t || typeof t.id !== 'string' || !t.id || t.id.length > 100 || tapeIds.has(t.id) || !['red', 'blue', 'yellow', 'white', 'black'].includes(t.color) || typeof t.text !== 'string' || t.text.length > 200 || ![t.x1, t.y1, t.x2, t.y2].every(finite)) throw new Error('This board contains invalid tape. Nothing was changed.');
+    tapeIds.add(t.id);
+    return {id: t.id, color: t.color, text: t.text, x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2};
+  });
   return {
     version: 1,
     name: typeof data.name === 'string' ? data.name.slice(0, 80) || 'My board' : 'My board',
@@ -165,6 +172,7 @@ export function validateBoard(data) {
     ...(Object.keys(normalizeNoteStyle(data.noteStyle)).length ? {noteStyle: normalizeNoteStyle(data.noteStyle)} : {}),
     notes,
     connections,
+    tapes,
     view: view && finite(view.x) && finite(view.y) && finite(view.zoom) && view.zoom >= .25 && view.zoom <= 2 ? {x: view.x, y: view.y, zoom: view.zoom} : {x: 0, y: 0, zoom: 1},
   };
 }

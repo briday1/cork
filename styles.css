@@ -840,3 +840,14 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .close-board-dialog { max-width:470px; }
 .close-board-dialog h2 { margin-top:0; }
 @media(pointer:coarse) { .duplicate-board-tab,.all-boards-list .duplicate-board-list { opacity:1; min-width:32px; min-height:44px; } }
+
+.tape-layer { position:absolute; left:0; top:0; width:1px; height:1px; overflow:visible; z-index:0; pointer-events:none; }
+.tape-piece { pointer-events:visiblePainted; cursor:pointer; }
+.tape-piece.is-selected { filter:drop-shadow(0 0 3px #00cdd2); }
+.tape-bar { z-index:20001; }
+.tape-bar label { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+.tape-bar input { width:145px; min-width:0; }
+.tape-bar select, .tape-bar input { background:var(--surface, #fff); color:inherit; border:1px solid #999; border-radius:4px; padding:5px; }
+.tape-bar button { font-size:12px; }
+.is-taping { cursor:crosshair; }
+@media(max-width:680px) { .tape-bar { max-width:calc(100% - 20px); flex-wrap:wrap; } .tape-bar input { width:100px; } }
