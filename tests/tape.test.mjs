@@ -79,3 +79,10 @@ test('a music note pin survives saving and reopening', () => {
   const board=blankBoard(); board.notes.push({id:'music',type:'pin',category:'music',title:'music',text:'',x:0,y:0,tilt:0,pin:{shape:'music',size:48,rotation:0}});
   assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,'music');
 });
+
+test('additional symbol pins survive board saves', () => {
+  for (const shape of ['check','envelope','camera','film','fire','exclamation','chat','tv']) {
+    const board=blankBoard(); board.notes.push({id:shape,type:'pin',category:shape,title:shape,text:'',x:0,y:0,tilt:0,pin:{shape,size:48,rotation:0}});
+    assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,shape);
+  }
+});

@@ -822,7 +822,7 @@ function updateCounts() {
 }
 
 
-const PIN_SHAPES = {'board-pin':'', classic:'📌', arrow:'', 'arrow-blue':'', 'arrow-yellow':'', 'arrow-green':'', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆', music:'🎵'};
+const PIN_SHAPES = {'board-pin':'', classic:'📌', arrow:'', 'arrow-blue':'', 'arrow-yellow':'', 'arrow-green':'', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆', music:'🎵', check:'✅', envelope:'✉️', camera:'📷', film:'🎞️', fire:'🔥', exclamation:'❗', chat:'💬', tv:'📺'};
 const ARROW_PIN_COLORS = {arrow:'#c63832', 'arrow-blue':'#3266bd', 'arrow-yellow':'#e2ad1d', 'arrow-green':'#388b50'};
 function setPinGlyph(element, shape) {
   element.replaceChildren();
@@ -2016,7 +2016,7 @@ $('download-categories').addEventListener('click', () => {
 $('random-note').addEventListener('click', randomCategory);
 for (const [shape, glyph] of Object.entries(PIN_SHAPES)) {
   if (shape === 'classic') continue; // Keep older boards readable without offering the slanted pin.
-  const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; setPinGlyph(button,shape); const label = shape === 'board-pin' ? 'board' : shape === 'arrow' ? 'red arrow' : shape.startsWith('arrow-') ? `${shape.slice(6)} arrow` : shape; button.title=`${label} push pin`; button.setAttribute('aria-label',`${label} push pin`);
+  const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; setPinGlyph(button,shape); const label = shape === 'check' ? 'check mark' : shape === 'film' ? 'film reel' : shape === 'chat' ? 'chat bubble' : shape === 'tv' ? 'TV' : shape === 'board-pin' ? 'board' : shape === 'arrow' ? 'red arrow' : shape.startsWith('arrow-') ? `${shape.slice(6)} arrow` : shape; button.title=`${label} push pin`; button.setAttribute('aria-label',`${label} push pin`);
   button.addEventListener('click',()=> {
     const selectedPin = board.notes.find(note => selected.has(note.id) && (note.pin || selectedMainPinId === note.id));
     if (!pinChoosing && selected.size === 1 && selectedPin) { record(); selectedPin.pin ||= {shape:'board-pin',size:48,rotation:0}; selectedPin.pin.shape=shape; applyPushPin(selectedPin,noteElements.get(selectedPin.id)); renderStrings(); refreshSupplyControls(); saveSoon(); }
