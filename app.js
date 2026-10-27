@@ -822,7 +822,19 @@ function updateCounts() {
 }
 
 
-const PIN_SHAPES = {classic:'📌', arrow:'➡️', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆'};
+const PIN_SHAPES = {classic:'📌', arrow:'', 'arrow-blue':'', 'arrow-yellow':'', 'arrow-green':'', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆'};
+const ARROW_PIN_COLORS = {arrow:'#c63832', 'arrow-blue':'#3266bd', 'arrow-yellow':'#e2ad1d', 'arrow-green':'#388b50'};
+function setPinGlyph(element, shape) {
+  element.replaceChildren();
+  if (!Object.hasOwn(ARROW_PIN_COLORS, shape)) { element.textContent=PIN_SHAPES[shape]; return; }
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox','0 0 64 64'); svg.setAttribute('aria-hidden','true');
+  svg.style.width='85%'; svg.style.height='85%';
+  const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d','M 5 23 L 35 23 L 35 10 L 60 32 L 35 54 L 35 41 L 5 41 Z');
+  path.setAttribute('fill',ARROW_PIN_COLORS[shape]); path.setAttribute('stroke','#321d1a'); path.setAttribute('stroke-opacity','.3'); path.setAttribute('stroke-width','1.5'); path.setAttribute('stroke-linejoin','round');
+  svg.append(path); element.append(svg);
+}
 const CARD_COLORS = {white:'#fffef8', yellow:'#fff1af', pink:'#f9d5d7', blue:'#d4e8f4'};
 const STRING_COLORS = {red:['#9e3027','#e06e57'], blue:['#245aa5','#9dc1f0'], yellow:['#b58a08','#ffe07a'], green:['#34764b','#9cdb9b'], black:['#292c30','#a2a4a7'], white:['#c8c8c0','#ffffff']};
 const TAPE_COLORS = {red:'#b5252e', blue:'#2454a3', yellow:'#f1d43b', white:'#f0eee7', black:'#232527'};
@@ -1381,7 +1393,7 @@ function applyPushPin(note, element) {
   element.querySelector('.pin-art')?.remove(); element.querySelector('.pin-adjust')?.remove(); element.querySelector('.remove-custom-pin')?.remove();
   element.classList.toggle('has-custom-pin', Boolean(note.pin));
   if (!note.pin) return;
-  const art = document.createElement('span'); art.className='pin-art'; art.textContent=PIN_SHAPES[note.pin.shape]; art.setAttribute('aria-hidden','true');
+  const art = document.createElement('span'); art.className='pin-art'; setPinGlyph(art,note.pin.shape); art.setAttribute('aria-hidden','true');
   art.style.setProperty('--pin-size', `${note.pin.size}px`); art.style.setProperty('--pin-angle', `${note.pin.rotation}deg`);
   const adjust=document.createElement('button'); adjust.className='pin-adjust'; adjust.type='button'; adjust.title='Drag to resize and rotate pin'; adjust.setAttribute('aria-label','Resize and rotate push pin');
   adjust.addEventListener('keydown', event => {
@@ -1959,7 +1971,7 @@ $('download-categories').addEventListener('click', () => {
 });
 $('random-note').addEventListener('click', randomCategory);
 for (const [shape, glyph] of Object.entries(PIN_SHAPES)) {
-  const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; button.textContent=glyph; button.title=`${shape} push pin`; button.setAttribute('aria-label',`${shape} push pin`);
+  const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; setPinGlyph(button,shape); const label = shape === 'arrow' ? 'red arrow' : shape.startsWith('arrow-') ? `${shape.slice(6)} arrow` : shape; button.title=`${label} push pin`; button.setAttribute('aria-label',`${label} push pin`);
   button.addEventListener('click',()=> {
     const selectedPin = board.notes.find(note => selected.has(note.id) && note.pin);
     if (!pinChoosing && selected.size === 1 && selectedPin) { record(); selectedPin.pin.shape=shape; applyPushPin(selectedPin,noteElements.get(selectedPin.id)); renderStrings(); refreshSupplyControls(); saveSoon(); }

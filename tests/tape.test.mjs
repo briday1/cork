@@ -40,3 +40,10 @@ test('string geometry anchors a standalone pin at its center', async () => {
   const curve=connectionGeometry({type:'pin', x:20,y:40,width:120,height:120}, {type:'note',x:300,y:100,width:200});
   assert.deepEqual(curve.from,{x:80,y:100});
 });
+
+test('all arrow pin colors round-trip without losing existing arrows', () => {
+  for (const shape of ['arrow','arrow-blue','arrow-yellow','arrow-green']) {
+    const board=blankBoard(); board.notes.push({id:shape,type:'pin',category:shape,title:shape,text:'',x:0,y:0,tilt:0,pin:{shape,size:48,rotation:0}});
+    assert.equal(validateBoard(board).notes[0].pin.shape,shape);
+  }
+});
