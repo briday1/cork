@@ -906,3 +906,19 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .shuffle-actions { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:8px; margin-top:7px; }
 .shuffle-actions button { color:var(--rail-accent); font-size:11px; text-decoration:underline; text-underline-offset:3px; padding:5px 0; }
 @media(pointer:coarse) { .shuffle-actions button { min-height:44px; } }
+
+.supply-controls { z-index:20001; flex-wrap:wrap; max-width:min(620px, calc(100% - 24px)); color:var(--rail-ink); background:var(--rail-bg); border-color:var(--rail-rule); gap:8px; }
+.supply-controls strong { font-size:12px; white-space:nowrap; }
+.supply-controls label { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+.supply-controls select { font:inherit; color:var(--rail-ink); background:var(--rail-bg); border:1px solid var(--rail-rule); border-radius:4px; padding:5px; }
+.supply-controls .pin-options { display:flex; flex-wrap:wrap; gap:3px; }
+.supply-controls .pin-options button { font-size:21px; min-width:34px; min-height:34px; padding:2px; border:1px solid var(--rail-rule); border-radius:4px; }
+.supply-controls .pin-options button[aria-pressed=true] { background:var(--rail-hover); outline:2px solid var(--rail-accent); }
+.supply-controls #supply-controls-done { font-size:12px; color:var(--rail-ink); }
+.supply-controls #supply-controls-hint { font-size:11px; }
+@media(max-width:680px) { .supply-controls { max-width:calc(100% - 20px); } .supply-controls .pin-options button { min-width:40px; min-height:40px; } }
+
+.extra-supplies { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.tape-bar { color:var(--rail-ink); background:var(--rail-bg); border-color:var(--rail-rule); }
+.tape-bar select, .tape-bar input { background:var(--rail-bg); color:var(--rail-ink); border-color:var(--rail-rule); }
+.tape-bar button { color:var(--rail-ink); border-color:var(--rail-rule); }

@@ -54,6 +54,7 @@ let folderPickTarget = null;
 let pdfExporting = false;
 let stringMode = false, stringStart = null, stringFrame = 0, stringLayer;
 let tapeMode = false, selectedTape = null, tapeLayer;
+let pinChoosing = false;
 let savingBlocked = false;
 let startupProblem = '';
 let undoStack = [];
@@ -834,6 +835,7 @@ function setTapeMode(active, keepSelection = false) {
   $('tape-text-label').hidden = !tape; $('tape-duplicate').hidden = !tape; $('tape-delete').hidden = !tape; $('tape-hint').hidden = !active;
   if (tape) { $('tape-color').value = tape.color; $('tape-text').value = tape.text; }
   if (tapeLayer?.isConnected) renderTapes();
+  refreshSupplyControls();
 }
 function updateTapeGeometry(group, tape) {
   const length = Math.hypot(tape.x2-tape.x1, tape.y2-tape.y1);
@@ -871,7 +873,7 @@ function renderTapes(preview = null) {
     updateTapeGeometry(group, tape);
   }
 }
-$('add-tape').addEventListener('click', () => { cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode=false; spaceHeld=false; updateHandMode(); setSelected(null); setTapeMode(!tapeMode); if (compactLayout.matches) setSidebar(false); });
+$('add-tape').addEventListener('click', () => { pinChoosing=false; cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode=false; spaceHeld=false; updateHandMode(); setSelected(null); setTapeMode(!tapeMode); if (compactLayout.matches) setSidebar(false); });
 $('tape-done').addEventListener('click', () => setTapeMode(false));
 $('tape-color').addEventListener('change', () => { const tape=board.tapes.find(t => t.id===selectedTape); if (tape) { record(); tape.color=$('tape-color').value; renderTapes(); saveSoon(); } });
 $('tape-text').addEventListener('focus', record);
@@ -892,11 +894,12 @@ function queueStrings() {
 }
 
 function setStringMode(active) {
+  if (active) pinChoosing = false;
   if (active) { setTapeMode(false); setSelectMode(false); setSelected(null); }
   stringMode = active; stringStart = null;
   viewport.classList.toggle('is-connecting', active);
   $('add-string').setAttribute('aria-pressed', String(active));
-  updateBoardTip();
+  updateBoardTip(); refreshSupplyControls();
   for (const element of noteElements.values()) element.classList.remove('is-string-start');
 }
 
@@ -1059,7 +1062,27 @@ function updateSelection() {
   renderTextControls();
   const label = `${count} selected`;
   if ($('selection-count').textContent !== label) $('selection-count').textContent = label;
-  updateBoardTip();
+  updateBoardTip(); refreshSupplyControls();
+}
+
+function refreshSupplyControls() {
+  const panel = $('supply-controls');
+  if (!panel) return;
+  const notes = board.notes.filter(note => selected.has(note.id));
+  const selectedPin = notes.length === 1 && notes[0].pin ? notes[0] : null;
+  const cardSelection = notes.length > 0 && notes.every(note => note.type === 'card');
+  const selectedLinks = board.connections.filter(link => selectedStrings.has(link.id));
+  const context = tapeMode || selectedTape ? '' : pinChoosing ? 'pin-new' : placement?.type === 'card' ? 'card-new' : stringMode ? 'string-new' : placement ? '' : selectedPin ? 'pin-edit' : cardSelection ? 'card-edit' : selectedLinks.length ? 'string-edit' : '';
+  panel.hidden = !context;
+  $('pin-options').hidden = !context.startsWith('pin');
+  $('card-color-control').hidden = !context.startsWith('card');
+  $('string-color-control').hidden = !context.startsWith('string');
+  $('add-pin').setAttribute('aria-pressed', String(pinChoosing));
+  $('supply-controls-title').textContent = context.startsWith('pin') ? 'Push pins' : context.startsWith('card') ? 'Index card' : 'String';
+  $('supply-controls-hint').textContent = context === 'pin-new' ? 'Choose a pin, then place it.' : context === 'pin-edit' ? 'Drag the handle to resize and rotate.' : context === 'card-new' ? 'Choose a color, then place the card.' : context === 'string-new' ? 'Choose a color, then select two items.' : '';
+  if (context === 'card-edit') { const colors = new Set(notes.map(n => n.cardColor || 'white')); $('card-color').value = colors.size === 1 ? [...colors][0] : ''; }
+  if (context === 'string-edit') { const colors = new Set(selectedLinks.map(n => n.color || 'red')); $('string-color').value = colors.size === 1 ? [...colors][0] : ''; }
+  for (const button of $('pin-options').querySelectorAll('button')) button.setAttribute('aria-pressed', String(Boolean(selectedPin && context === 'pin-edit' && button.dataset.shape === selectedPin.pin.shape)));
 }
 
 function updateBoardTip() {
@@ -1068,6 +1091,7 @@ function updateBoardTip() {
 }
 
 function setSelectMode(active) {
+  if (active) pinChoosing = false;
   selectMode = active;
   if (active) {
     document.activeElement?.blur();
@@ -1471,7 +1495,7 @@ function buildNote(note, index) {
 }
 
 function renderBoard() {
-  selectedTape = null; setTapeMode(false);
+  pinChoosing = false; selectedTape = null; setTapeMode(false);
   world.replaceChildren(); noteElements.clear();
   $('board-name').value = board.name;
   board.notes.forEach(buildNote);
@@ -1509,6 +1533,7 @@ function setSidebar(open, remember = false) {
 }
 
 function startPlacement(type, category = '', assetId = null, folderName = '') {
+  pinChoosing = false;
   cancelGesture();
   setTapeMode(false);
   setSelectMode(false);
@@ -1528,7 +1553,8 @@ function startPlacement(type, category = '', assetId = null, folderName = '') {
   $('preview-title').textContent = type === 'card' ? 'Notes' : type === 'image' ? '' : type === 'folder' ? folderName : category;
   $('preview-hint').textContent = matchMedia('(pointer:coarse)').matches ? 'Tap to pin it here' : 'Click to pin it here';
   $('placement-label').textContent = type === 'pin' ? 'Click the board or an item to place the push pin' : type === 'card' ? 'Choose a position for the index card' : type === 'image' ? 'Choose a position for the photo' : type === 'folder' ? 'Choose a position for the folder' : `Choose a position for “${category}”`;
-  $('placement-bar').hidden = false;
+  $('placement-bar').hidden = type === 'card';
+  refreshSupplyControls();
   if (compactLayout.matches) setSidebar(false);
   renderCategories();
   const width = type === 'card' ? 344 : type === 'image' ? 286 : type === 'folder' ? 300 : 248;
@@ -1545,7 +1571,7 @@ function movePreview(point) {
 function cancelPlacement() {
   placement = null; viewport.classList.remove('is-placing');
   $('placement-preview').hidden = true; $('placement-bar').hidden = true;
-  renderCategories();
+  renderCategories(); refreshSupplyControls();
 }
 
 function placeNote(point, targetId = null) {
@@ -1932,7 +1958,16 @@ $('download-categories').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 });
 $('random-note').addEventListener('click', randomCategory);
-for (const [shape, glyph] of Object.entries(PIN_SHAPES)) { const button=document.createElement('button'); button.type='button'; button.textContent=glyph; button.title=`${shape} push pin`; button.setAttribute('aria-label',`${shape} push pin`); button.addEventListener('click',()=>startPlacement('pin',shape)); $('pin-options').append(button); }
+for (const [shape, glyph] of Object.entries(PIN_SHAPES)) {
+  const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; button.textContent=glyph; button.title=`${shape} push pin`; button.setAttribute('aria-label',`${shape} push pin`);
+  button.addEventListener('click',()=> {
+    const selectedPin = board.notes.find(note => selected.has(note.id) && note.pin);
+    if (!pinChoosing && selected.size === 1 && selectedPin) { record(); selectedPin.pin.shape=shape; applyPushPin(selectedPin,noteElements.get(selectedPin.id)); renderStrings(); refreshSupplyControls(); saveSoon(); }
+    else { pinChoosing=false; startPlacement('pin',shape); }
+  }); $('pin-options').append(button);
+}
+$('add-pin').addEventListener('click', () => { const open=!pinChoosing; cancelGesture(); cancelPlacement(); setStringMode(false); setTapeMode(false); setSelectMode(false); setSelected(null); pinChoosing=open; refreshSupplyControls(); if (compactLayout.matches) setSidebar(false); });
+$('supply-controls-done').addEventListener('click', () => { pinChoosing=false; if (placement?.type === 'card') cancelPlacement(); if (stringMode) setStringMode(false); setSelected(null); refreshSupplyControls(); });
 $('card-color').addEventListener('change', () => { const cards=selectedNotes().filter(n=>n.type==='card'); if (!cards.length) return; record(); for (const n of cards) {n.cardColor=$('card-color').value; noteElements.get(n.id).style.setProperty('--card-color', CARD_COLORS[n.cardColor]);} saveSoon(); });
 $('string-color').addEventListener('change', () => { const links=board.connections.filter(c=>selectedStrings.has(c.id)); if (!links.length) return; record(); for (const c of links) c.color=$('string-color').value; renderStrings(); saveSoon(); });
 $('add-card').addEventListener('click', () => startPlacement('card'));
@@ -1964,7 +1999,7 @@ $('folder-file').addEventListener('change', event => {
 });
 $('folder-file').addEventListener('cancel', () => { folderPickTarget = null; });
 $('add-string').addEventListener('click', () => {
-  setTapeMode(false);
+  pinChoosing=false; setTapeMode(false);
   const active = !stringMode; cancelPlacement(); handMode = false; spaceHeld = false; updateHandMode(); setStringMode(active);
   if (compactLayout.matches) setSidebar(false);
 });
@@ -2039,7 +2074,7 @@ $('zoom-in').addEventListener('click', () => changeZoom(1.2));
 $('zoom-out').addEventListener('click', () => changeZoom(1 / 1.2));
 $('zoom-reset').addEventListener('click', () => { board.view = zoomAt(board.view, 1, {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2}); applyView(); saveSoon(); });
 $('fit-view').addEventListener('click', fitView);
-$('pan-mode').addEventListener('click', () => { setTapeMode(false); cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode = !handMode; updateHandMode(); });
+$('pan-mode').addEventListener('click', () => { pinChoosing=false; setTapeMode(false); cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode = !handMode; updateHandMode(); });
 $('select-mode').addEventListener('click', () => { setTapeMode(false); cancelGesture(); setSelectMode(!selectMode); });
 $('delete-selection').addEventListener('click', removeSelection);
 $('clear-selection').addEventListener('click', () => setSelected(null));
@@ -2449,7 +2484,7 @@ $('import-file').addEventListener('change', async event => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !document.querySelector('dialog[open]')) { event.preventDefault(); saveBoardFile(event.shiftKey); return; }
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { setTapeMode(false); cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
+  if (event.key === 'Escape') { pinChoosing=false; setTapeMode(false); cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); for (const tape of board.tapes) selectedTapes.add(tape.id); renderTapes(); updateSelection(); return; }
