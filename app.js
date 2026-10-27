@@ -727,6 +727,7 @@ function applyInterfaceTheme() {
 }
 
 function toggleSidebarSettings(id) {
+  closeSupplyMenu(); $('category-source').open=false; closeMenu();
   const open = !$(id).open;
   for (const other of ['text-settings', 'appearance-settings']) $(other).open = other === id && open;
 }
@@ -835,9 +836,9 @@ function setPinGlyph(element, shape) {
   if (shape === 'check' || shape === 'cross') {
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
     svg.setAttribute('viewBox','0 0 64 64'); svg.setAttribute('aria-hidden','true');
-    const size=element.classList.contains('pin-art') ? '85%' : '24px'; svg.style.width=size; svg.style.height=size;
+    const size=element.classList.contains('pin-art') ? '100%' : '24px'; svg.style.width=size; svg.style.height=size;
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
-    path.setAttribute('d',shape === 'check' ? 'M 9 33 L 25 49 L 55 15' : 'M 13 13 L 51 51 M 51 13 L 13 51');
+    path.setAttribute('d',shape === 'check' ? 'M 9 33 L 25 49 L 55 15' : 'M 9 9 L 55 55 M 55 9 L 9 55');
     path.setAttribute('fill','none'); path.setAttribute('stroke',shape === 'check' ? '#278843' : '#c63832');
     path.setAttribute('stroke-width','9'); path.setAttribute('stroke-linecap','round'); path.setAttribute('stroke-linejoin','round');
     svg.append(path); element.append(svg); return;
@@ -852,7 +853,7 @@ function setPinGlyph(element, shape) {
   }
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 64 64'); svg.setAttribute('aria-hidden','true');
-  const previewSize = element.classList.contains('pin-art') ? '85%' : '24px';
+  const previewSize = element.classList.contains('pin-art') ? '100%' : '24px';
   svg.style.width=previewSize; svg.style.height=previewSize;
   const path=document.createElementNS('http://www.w3.org/2000/svg','path');
   path.setAttribute('d','M 5 23 L 35 23 L 35 10 L 60 32 L 35 54 L 35 41 L 5 41 Z');
@@ -1565,7 +1566,7 @@ function setSidebar(open, remember = false) {
   document.body.classList.toggle('sidebar-open', open);
   $('sidebar-scrim').hidden = !open || !compactLayout.matches;
   $('toggle-sidebar').setAttribute('aria-expanded', String(open));
-  if (!open) closeMenu();
+  if (!open) { closeMenu(); closeSupplyMenu(); $('category-source').open=false; }
   if (!open && $('sidebar').contains(document.activeElement)) $('toggle-sidebar').focus({preventScroll: true});
   if (remember && !compactLayout.matches) {
     desktopSidebarOpen = open;
@@ -2155,7 +2156,12 @@ $('finish-editing').addEventListener('click', () => { document.activeElement?.bl
 document.addEventListener('selectionchange', queueCaretReveal);
 
 function closeMenu() { $('board-menu').hidden = true; $('board-menu-button').setAttribute('aria-expanded', 'false'); }
-$('board-menu-button').addEventListener('click', () => { const open = $('board-menu').hidden; $('board-menu').hidden = !open; $('board-menu-button').setAttribute('aria-expanded', String(open)); });
+function closeSupplyMenu() { $('supply-menu').hidden=true; $('supply-menu-toggle').setAttribute('aria-expanded','false'); }
+$('supply-menu-toggle').addEventListener('click', () => { const open=$('supply-menu').hidden; $('supply-menu').hidden=!open; $('supply-menu-toggle').setAttribute('aria-expanded',String(open)); if(open) { closeMenu(); $('category-source').open=false; $('text-settings').open=false; $('appearance-settings').open=false; } });
+$('supply-menu').addEventListener('click', event => { if (event.target.closest('button:not(:disabled)')) closeSupplyMenu(); });
+document.addEventListener('click', event => { if (!event.target.closest('#supply-menu, #supply-menu-toggle')) closeSupplyMenu(); if (!event.target.closest('#category-source')) $('category-source').open=false; });
+$('category-source').addEventListener('toggle', () => { if ($('category-source').open) { closeSupplyMenu(); closeMenu(); } });
+$('board-menu-button').addEventListener('click', () => { const open = $('board-menu').hidden; if (open) { closeSupplyMenu(); $('category-source').open=false; } $('board-menu').hidden = !open; $('board-menu-button').setAttribute('aria-expanded', String(open)); });
 document.addEventListener('click', event => { if (!event.target.closest('.menu-wrap')) closeMenu(); });
 $('show-help').addEventListener('click', () => { if (compactLayout.matches) setSidebar(false); $('help-dialog').showModal(); });
 $('close-help').addEventListener('click', () => $('help-dialog').close());
@@ -2231,6 +2237,7 @@ function updateEmailActions() {
   $('email-share').disabled = !files.length; $('email-download').disabled = !files.length; $('email-open').disabled = !files.length;
 }
 $('email-board').addEventListener('click', async () => {
+  closeMenu();
   const revision = ++emailPreparation; emailFiles = null;
   $('email-categories').checked = false;
   $('email-categories').disabled = !categoriesReady || categoryLoadFailed || !flushCategoryEdits();
@@ -2599,7 +2606,7 @@ $('import-file').addEventListener('change', async event => {
 document.addEventListener('keydown', event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !document.querySelector('dialog[open]')) { event.preventDefault(); saveBoardFile(event.shiftKey); return; }
   const editing = event.target.matches('textarea, input, select, [contenteditable=true]');
-  if (event.key === 'Escape') { pinChoosing=false; setTapeMode(false); cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
+  if (event.key === 'Escape') { pinChoosing=false; setTapeMode(false); cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeSupplyMenu(); $('category-source').open=false; closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); for (const tape of board.tapes) selectedTapes.add(tape.id); renderTapes(); updateSelection(); return; }
