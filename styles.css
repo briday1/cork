@@ -863,3 +863,10 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .tape-handle { fill:#fff; stroke:#176b76; stroke-width:2; cursor:crosshair; pointer-events:all; }
 .tape-handle:focus-visible { stroke:#003e49; stroke-width:3; }
 .tape-piece.is-selected { cursor:move; }
+
+.supply-colors { display:flex; flex-wrap:wrap; gap:8px; padding:0 0 10px; color:var(--rail-muted); font-size:10px; }
+.supply-colors label { display:flex; align-items:center; gap:4px; }
+.supply-colors select { font:inherit; color:var(--rail-ink); background:var(--rail-bg); border:1px solid var(--rail-rule); padding:3px; }
+.note.index-card { --paper-face:var(--card-color,#fffef8); }
+.yarn-base { stroke:var(--yarn-color,#9e3027); }
+.yarn-twist { stroke:var(--yarn-highlight,#e06e57); }

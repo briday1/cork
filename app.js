@@ -816,6 +816,8 @@ function updateCounts() {
 }
 
 
+const CARD_COLORS = {white:'#fffef8', yellow:'#fff1af', pink:'#f9d5d7', blue:'#d4e8f4'};
+const STRING_COLORS = {red:['#9e3027','#e06e57'], blue:['#245aa5','#9dc1f0'], yellow:['#b58a08','#ffe07a'], green:['#34764b','#9cdb9b'], black:['#292c30','#a2a4a7'], white:['#c8c8c0','#ffffff']};
 const TAPE_COLORS = {red:'#b5252e', blue:'#2454a3', yellow:'#f1d43b', white:'#f0eee7', black:'#232527'};
 function setTapeMode(active, keepSelection = false) {
   tapeMode = active; if (!keepSelection) selectedTape = null;
@@ -900,7 +902,7 @@ function chooseStringItem(id) {
   }
   if (id === stringStart) return;
   if (!board.connections.some(link => link.from === stringStart && link.to === id || link.from === id && link.to === stringStart)) {
-    record(); board.connections.push({id: crypto.randomUUID(), from: stringStart, to: id}); saveNow();
+    record(); board.connections.push({id: crypto.randomUUID(), from: stringStart, to: id, color:$('string-color').value}); saveNow();
   }
   setStringMode(false); renderStrings();
 }
@@ -925,6 +927,7 @@ function renderStrings() {
     const curve = connectionGeometry(rect(from), rect(to));
     const d = `M ${curve.from.x} ${curve.from.y} Q ${curve.control.x} ${curve.control.y} ${curve.to.x} ${curve.to.y}`;
     const group = svg('g', {class: `yarn${selectedStrings.has(connection.id) ? ' is-selected' : ''}`, 'data-connection-id': connection.id});
+    const colors = STRING_COLORS[connection.color] || STRING_COLORS.red; group.style.setProperty('--yarn-color',colors[0]); group.style.setProperty('--yarn-highlight',colors[1]);
     group.append(svg('path', {d, class: 'yarn-base'}), svg('path', {d, class: 'yarn-twist'}));
     const hit = svg('path', {d, class: 'connection-hit', tabindex: '0', role: 'button', 'aria-pressed': String(selectedStrings.has(connection.id)), 'aria-label': 'Connection. Press Delete to remove.'});
     hit.addEventListener('click', event => {
@@ -1353,6 +1356,7 @@ function buildNote(note, index) {
   element.style.zIndex = String(index + 1);
   element.style.setProperty('--tilt', `${note.tilt}deg`);
   element.style.setProperty('--note-color', colorFor(note.category));
+  if (note.type === 'card') element.style.setProperty('--card-color', CARD_COLORS[note.cardColor] || CARD_COLORS.white);
   element.setAttribute('aria-label', note.type === 'card' ? 'Index card' : `${note.category} note`);
   const handle = document.createElement('div');
   handle.className = 'note-drag'; handle.tabIndex = 0; handle.setAttribute('role', 'button');
@@ -1514,6 +1518,7 @@ function placeNote(point) {
   record();
   const location = screenToWorld(point, board.view);
   const note = {id: crypto.randomUUID(), style: normalizeNoteStyle(board.noteStyle), type: placement.type, category: placement.category, title: placement.type === 'card' ? 'Notes' : placement.category, text: '', x: location.x, y: location.y, tilt: (Math.random() - .5) * 2.4};
+  if (placement.type === 'card') note.cardColor = $('card-color').value;
   if (placement.type === 'image') { note.imageId = placement.imageId; note.title = placement.imageName || 'Photo'; }
   if (placement.type === 'folder') { note.folderId = placement.folderId; note.title = placement.folderName; }
   board.notes.push(note);
@@ -1878,6 +1883,8 @@ $('download-categories').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 });
 $('random-note').addEventListener('click', randomCategory);
+$('card-color').addEventListener('change', () => { const cards=selectedNotes().filter(n=>n.type==='card'); if (!cards.length) return; record(); for (const n of cards) {n.cardColor=$('card-color').value; noteElements.get(n.id).style.setProperty('--card-color', CARD_COLORS[n.cardColor]);} saveSoon(); });
+$('string-color').addEventListener('change', () => { const links=board.connections.filter(c=>selectedStrings.has(c.id)); if (!links.length) return; record(); for (const c of links) c.color=$('string-color').value; renderStrings(); saveSoon(); });
 $('add-card').addEventListener('click', () => startPlacement('card'));
 $('add-image').addEventListener('click', () => { imagePickSession = activeSession; $('image-file').click(); });
 if (typeof window.showDirectoryPicker !== 'function') $('add-folder').title = 'Choose a folder. This browser asks you to select it again when opening a folder tile.';

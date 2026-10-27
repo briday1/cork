@@ -14,3 +14,13 @@ test('invalid tape is rejected instead of silently lost', () => {
   board.tapes.push({id:'t1', color:'purple', text:'', x1:0, y1:0, x2:10, y2:10});
   assert.throws(() => validateBoard(board), /invalid tape/);
 });
+
+test('card and string colors survive board validation', () => {
+  const board = blankBoard();
+  board.notes.push({id:'a',type:'card',category:'',title:'Card',text:'',x:0,y:0,tilt:0,cardColor:'pink'}, {id:'b',type:'card',category:'',title:'Card',text:'',x:300,y:0,tilt:0,cardColor:'blue'});
+  board.connections.push({id:'link',from:'a',to:'b',color:'green'});
+  const saved=validateBoard(board);
+  assert.equal(saved.notes[0].cardColor,'pink');
+  assert.equal(saved.notes[1].cardColor,'blue');
+  assert.equal(saved.connections[0].color,'green');
+});

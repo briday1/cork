@@ -142,7 +142,7 @@ export function validateBoard(data) {
     if (n.type === 'folder' && (typeof n.folderId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.folderId) || !n.title || n.title.length > 255)) throw new Error('This board contains an invalid folder link. Nothing was changed.');
     ids.add(n.id);
     const style = normalizeNoteStyle(n.style);
-    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(Object.keys(style).length ? {style} : {}), ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
+    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(Object.keys(style).length ? {style} : {}), ...(n.type === 'card' && ['white','yellow','pink','blue'].includes(n.cardColor) ? {cardColor:n.cardColor} : {}), ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
       ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {}),
       ...(finite(n.height) ? {height: Math.max(120, Math.min(2000, n.height))} : {}),
     })};
@@ -155,7 +155,7 @@ export function validateBoard(data) {
     const pair = JSON.stringify([connection.from, connection.to].sort());
     if (pairs.has(pair)) throw new Error('This board contains a duplicate connection. Nothing was changed.');
     pairs.add(pair); connectionIds.add(connection.id);
-    return {id: connection.id, from: connection.from, to: connection.to};
+    return {id: connection.id, from: connection.from, to: connection.to, ...(['red','blue','yellow','green','black','white'].includes(connection.color) && connection.color !== 'red' ? {color:connection.color} : {})};
   });
   if (data.tapes !== undefined && (!Array.isArray(data.tapes) || data.tapes.length > 5000)) throw new Error('This board contains invalid tape. Nothing was changed.');
   const tapeIds = new Set();
