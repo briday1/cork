@@ -86,3 +86,10 @@ test('additional symbol pins survive board saves', () => {
     assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,shape);
   }
 });
+
+test('check mark and X pin shapes remain valid after saving', () => {
+  for (const shape of ['check', 'cross']) {
+    const board=blankBoard(); board.notes.push({id:shape,type:'pin',category:shape,title:shape,text:'',x:0,y:0,tilt:0,pin:{shape,size:48,rotation:0}});
+    assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,shape);
+  }
+});

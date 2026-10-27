@@ -822,7 +822,7 @@ function updateCounts() {
 }
 
 
-const PIN_SHAPES = {'board-pin':'', classic:'📌', arrow:'', 'arrow-blue':'', 'arrow-yellow':'', 'arrow-green':'', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆', music:'🎵', check:'✅', envelope:'✉️', camera:'📷', film:'🎞️', fire:'🔥', exclamation:'❗', chat:'💬', tv:'📺'};
+const PIN_SHAPES = {'board-pin':'', classic:'📌', arrow:'', 'arrow-blue':'', 'arrow-yellow':'', 'arrow-green':'', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆', music:'🎵', check:'', cross:'', envelope:'✉️', camera:'📷', film:'🎞️', fire:'🔥', exclamation:'❗', chat:'💬', tv:'📺'};
 const ARROW_PIN_COLORS = {arrow:'#c63832', 'arrow-blue':'#3266bd', 'arrow-yellow':'#e2ad1d', 'arrow-green':'#388b50'};
 function setPinGlyph(element, shape) {
   element.replaceChildren();
@@ -831,6 +831,16 @@ function setPinGlyph(element, shape) {
     const size=element.classList.contains('pin-art') ? '23%' : '11px';
     Object.assign(head.style, {display:'inline-block', width:size, height:size, borderRadius:'50%', background:'radial-gradient(circle at 35% 25%,#ffe4d9 0 13%,#d75e48 28%,#8c2d20 72%)', boxShadow:'1px 3px 3px #30201577,inset -1px -1px 2px #57181088'});
     element.append(head); return;
+  }
+  if (shape === 'check' || shape === 'cross') {
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 64 64'); svg.setAttribute('aria-hidden','true');
+    const size=element.classList.contains('pin-art') ? '85%' : '24px'; svg.style.width=size; svg.style.height=size;
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',shape === 'check' ? 'M 9 33 L 25 49 L 55 15' : 'M 13 13 L 51 51 M 51 13 L 13 51');
+    path.setAttribute('fill','none'); path.setAttribute('stroke',shape === 'check' ? '#278843' : '#c63832');
+    path.setAttribute('stroke-width','9'); path.setAttribute('stroke-linecap','round'); path.setAttribute('stroke-linejoin','round');
+    svg.append(path); element.append(svg); return;
   }
   if (!Object.hasOwn(ARROW_PIN_COLORS, shape)) {
     if (!element.classList.contains('pin-art')) { element.textContent=PIN_SHAPES[shape]; return; }
@@ -2016,7 +2026,7 @@ $('download-categories').addEventListener('click', () => {
 $('random-note').addEventListener('click', randomCategory);
 for (const [shape, glyph] of Object.entries(PIN_SHAPES)) {
   if (shape === 'classic') continue; // Keep older boards readable without offering the slanted pin.
-  const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; setPinGlyph(button,shape); const label = shape === 'check' ? 'check mark' : shape === 'film' ? 'film reel' : shape === 'chat' ? 'chat bubble' : shape === 'tv' ? 'TV' : shape === 'board-pin' ? 'board' : shape === 'arrow' ? 'red arrow' : shape.startsWith('arrow-') ? `${shape.slice(6)} arrow` : shape; button.title=`${label} push pin`; button.setAttribute('aria-label',`${label} push pin`);
+  const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; setPinGlyph(button,shape); const label = shape === 'check' ? 'green check mark' : shape === 'cross' ? 'red X' : shape === 'film' ? 'film reel' : shape === 'chat' ? 'chat bubble' : shape === 'tv' ? 'TV' : shape === 'board-pin' ? 'board' : shape === 'arrow' ? 'red arrow' : shape.startsWith('arrow-') ? `${shape.slice(6)} arrow` : shape; button.title=`${label} push pin`; button.setAttribute('aria-label',`${label} push pin`);
   button.addEventListener('click',()=> {
     const selectedPin = board.notes.find(note => selected.has(note.id) && (note.pin || selectedMainPinId === note.id));
     if (!pinChoosing && selected.size === 1 && selectedPin) { record(); selectedPin.pin ||= {shape:'board-pin',size:48,rotation:0}; selectedPin.pin.shape=shape; applyPushPin(selectedPin,noteElements.get(selectedPin.id)); renderStrings(); refreshSupplyControls(); saveSoon(); }
