@@ -978,3 +978,7 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
   .sidebar-bottom > .extra-supplies .index-button { min-height:44px; }
   .sidebar-bottom > .appearance-section[open] { bottom:52px; }
 }
+
+/* Align the sidebar menu chevrons with their labels. */
+.board-menu-toggle, .supplies-heading .category-source summary, #supply-menu-toggle { display:inline-flex; align-items:center; gap:5px; line-height:1.2; }
+.board-menu-toggle > span, .supplies-heading .category-source summary > span, #supply-menu-toggle > span { display:block; flex:none; width:5px; height:5px; margin-top:-3px; font-size:0; border:solid currentColor; border-width:0 1px 1px 0; transform:rotate(45deg); }
