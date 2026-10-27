@@ -52,3 +52,25 @@ test('the ordinary board pin is preserved when saving and reopening', () => {
   const board=blankBoard(); board.notes.push({id:'ordinary',type:'pin',category:'board-pin',title:'board-pin',text:'',x:0,y:0,tilt:0,pin:{shape:'board-pin',size:48,rotation:0}});
   assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,'board-pin');
 });
+
+test('a pin attached away from a note’s main pin survives save and keeps its own string', () => {
+  const board=blankBoard();
+  const note={id:'paper',type:'note',category:'Ideas',title:'Ideas',text:'',x:100,y:100,tilt:0};
+  const pin={id:'extra',type:'pin',category:'heart',title:'heart',text:'',x:130,y:160,tilt:0,pin:{shape:'heart',size:48,rotation:0},parentId:'paper',offsetX:30,offsetY:60};
+  const other={id:'other',type:'pin',category:'duck',title:'duck',text:'',x:500,y:160,tilt:0,pin:{shape:'duck',size:48,rotation:0}};
+  board.notes.push(note,pin,other); board.connections.push({id:'link',from:'extra',to:'other'});
+  const saved=validateBoard(JSON.parse(JSON.stringify(board)));
+  assert.equal(saved.notes[1].parentId,'paper'); assert.equal(saved.notes[1].offsetX,30); assert.equal(saved.connections[0].from,'extra');
+  assert.throws(()=>validateBoard({...board,notes:[pin,other]}),/missing item/);
+});
+
+test('string anchors stay at the rotational center for standalone and attached-item pins', async () => {
+  const {connectionGeometry}=await import('../export-core.js');
+  for (const rotation of [0,45,90,180]) {
+    const standalone={type:'pin',x:100,y:200,width:120,height:120,pin:{shape:'arrow',size:70,rotation}};
+    const item={type:'note',x:300,y:100,width:200,tilt:0,pin:{shape:'arrow',size:70,rotation}};
+    const curve=connectionGeometry(standalone,item);
+    assert.deepEqual(curve.from,{x:160,y:260});
+    assert.deepEqual(curve.to,{x:400,y:115});
+  }
+});

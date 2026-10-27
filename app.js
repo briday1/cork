@@ -54,7 +54,7 @@ let folderPickTarget = null;
 let pdfExporting = false;
 let stringMode = false, stringStart = null, stringFrame = 0, stringLayer;
 let tapeMode = false, selectedTape = null, tapeLayer;
-let pinChoosing = false;
+let pinChoosing = false, selectedMainPinId = null;
 let savingBlocked = false;
 let startupProblem = '';
 let undoStack = [];
@@ -1049,7 +1049,7 @@ function localPoint(event) {
 }
 
 function setSelected(ids) {
-  selected.clear(); selectedStrings.clear(); selectedTapes.clear(); selectedTape = null;
+  selected.clear(); selectedStrings.clear(); selectedTapes.clear(); selectedTape = null; selectedMainPinId = null;
   if (tapeLayer?.isConnected) setTapeMode(false);
   for (const id of typeof ids === 'string' ? [ids] : ids || []) selected.add(id);
   updateSelection();
@@ -1088,12 +1088,15 @@ function refreshSupplyControls() {
   const panel = $('supply-controls');
   if (!panel) return;
   const notes = board.notes.filter(note => selected.has(note.id));
-  const selectedPin = notes.length === 1 && notes[0].pin ? notes[0] : null;
+  const selectedPin = notes.length === 1 && (notes[0].pin || selectedMainPinId === notes[0].id) ? notes[0] : null;
+  const pinConfig = selectedPin?.pin || (selectedPin ? {shape:'board-pin',size:48,rotation:0} : null);
   const cardSelection = notes.length > 0 && notes.every(note => note.type === 'card');
   const selectedLinks = board.connections.filter(link => selectedStrings.has(link.id));
   const context = tapeMode || selectedTape ? '' : pinChoosing ? 'pin-new' : placement?.type === 'card' ? 'card-new' : stringMode ? 'string-new' : placement ? '' : selectedPin ? 'pin-edit' : cardSelection ? 'card-edit' : selectedLinks.length ? 'string-edit' : '';
   panel.hidden = !context;
   $('pin-options').hidden = !context.startsWith('pin');
+  $('pin-size-control').hidden = context !== 'pin-edit';
+  if (context === 'pin-edit') $('pin-size').value = Math.round(pinConfig.size);
   $('card-color-control').hidden = !context.startsWith('card');
   $('string-color-control').hidden = !context.startsWith('string');
   $('add-pin').setAttribute('aria-pressed', String(pinChoosing));
@@ -1101,7 +1104,7 @@ function refreshSupplyControls() {
   $('supply-controls-hint').textContent = context === 'pin-new' ? 'Choose a pin, then place it.' : context === 'pin-edit' ? 'Drag the handle to resize and rotate.' : context === 'card-new' ? 'Choose a color, then place the card.' : context === 'string-new' ? 'Choose a color, then select two items.' : '';
   if (context === 'card-edit') { const colors = new Set(notes.map(n => n.cardColor || 'white')); $('card-color').value = colors.size === 1 ? [...colors][0] : ''; }
   if (context === 'string-edit') { const colors = new Set(selectedLinks.map(n => n.color || 'red')); $('string-color').value = colors.size === 1 ? [...colors][0] : ''; }
-  for (const button of $('pin-options').querySelectorAll('button')) button.setAttribute('aria-pressed', String(Boolean(selectedPin && context === 'pin-edit' && button.dataset.shape === selectedPin.pin.shape)));
+  for (const button of $('pin-options').querySelectorAll('button')) button.setAttribute('aria-pressed', String(Boolean(selectedPin && context === 'pin-edit' && button.dataset.shape === pinConfig.shape)));
 }
 
 function updateBoardTip() {
@@ -1128,19 +1131,24 @@ function arrowDirection(key) { return {ArrowLeft:[-1,0], ArrowRight:[1,0], Arrow
 function selectedTapePositions() { return board.tapes.filter(t => selectedTapes.has(t.id)).map(tape => ({tape, x1:tape.x1, y1:tape.y1, x2:tape.x2, y2:tape.y2})); }
 function moveSelectedTapes(dx,dy) { for (const t of board.tapes) if (selectedTapes.has(t.id)) { t.x1+=dx; t.y1+=dy; t.x2+=dx; t.y2+=dy; } renderTapes(); }
 function moveNotes(notes, dx, dy) {
+  const ids = new Set(notes.map(n=>n.id));
   for (const note of notes) {
     note.x += dx; note.y += dy;
+    if (note.parentId && !ids.has(note.parentId)) { note.offsetX += dx; note.offsetY += dy; }
     const element = noteElements.get(note.id);
     element.style.left = `${note.x}px`; element.style.top = `${note.y}px`;
   }
-  queueStrings();
+  syncAttachedPins(ids); queueStrings();
 }
 
+function syncAttachedPins(parentIds) {
+  for (const pin of board.notes) if (pin.type === 'pin' && pin.parentId && parentIds.has(pin.parentId)) { const parent=board.notes.find(n=>n.id===pin.parentId); if (!parent) continue; pin.x=parent.x+pin.offsetX; pin.y=parent.y+pin.offsetY; const el=noteElements.get(pin.id); if (el) { el.style.left=`${pin.x}px`; el.style.top=`${pin.y}px`; } }
+}
 function bringForward(id) {
   const index = board.notes.findIndex(note => note.id === id);
   if (index < 0 || index === board.notes.length - 1) return;
   board.notes.push(board.notes.splice(index, 1)[0]);
-  board.notes.forEach((note, i) => { if (noteElements.has(note.id)) noteElements.get(note.id).style.zIndex = String(i + 1); });
+  board.notes.forEach((note, i) => { if (noteElements.has(note.id)) noteElements.get(note.id).style.zIndex = String(note.type === 'pin' ? 100000+i : i + 1); });
   saveSoon();
 }
 
@@ -1418,7 +1426,7 @@ function applyPushPin(note, element) {
   }
 }
 function buildPushPin(note,index) {
-  const element=document.createElement('article'); element.className='note pin-item'; element.dataset.noteId=note.id; element.style.left=`${note.x}px`; element.style.top=`${note.y}px`; element.style.zIndex=String(index+1);
+  const element=document.createElement('article'); element.className='note pin-item'; element.dataset.noteId=note.id; element.style.left=`${note.x}px`; element.style.top=`${note.y}px`; element.style.zIndex=String(100000+index);
   element.setAttribute('aria-label', `${note.pin.shape} push pin`);
   const handle=document.createElement('div'); handle.className='note-drag'; handle.tabIndex=0; handle.setAttribute('role','button'); handle.setAttribute('aria-label','Move push pin');
   const actions=document.createElement('div'); actions.className='note-actions'; actions.append(actionButton('Duplicate pin','copy',()=>duplicateNote(note)),actionButton('Delete pin','trash',()=>removeNote(note.id)));
@@ -1490,7 +1498,7 @@ function buildNote(note, index) {
       const step = event.shiftKey ? 1 : 10;
       const angle = note.tilt * Math.PI / 180, dx = direction[0] * step, dy = direction[1] * step;
       Object.assign(note, resizePaper({...note, width: element.offsetWidth, height: element.offsetHeight}, dx * Math.cos(angle) - dy * Math.sin(angle), dx * Math.sin(angle) + dy * Math.cos(angle), side));
-      element.style.left = `${note.x}px`; element.style.top = `${note.y}px`;
+      element.style.left = `${note.x}px`; element.style.top = `${note.y}px`; syncAttachedPins(new Set([note.id])); queueStrings();
       autosize(note, element); saveSoon();
     });
     return resize;
@@ -1606,14 +1614,16 @@ function cancelPlacement() {
 function placeNote(point, targetId = null) {
   if (!placement) return;
   record();
-  if (placement.type === 'pin' && targetId) {
-    const target=board.notes.find(n=>n.id===targetId && n.type !== 'pin');
-    if (target) { target.pin={shape:placement.category,size:32,rotation:0}; applyPushPin(target,noteElements.get(target.id)); cancelPlacement(); setSelected(target.id); renderStrings(); saveNow(); return; }
+  const target = placement.type === 'pin' && targetId ? board.notes.find(n=>n.id===targetId && n.type !== 'pin') : null;
+  if (target) {
+    const el=noteElements.get(target.id), main=el.querySelector('.pin-art, .pin');
+    if (main) { const rect=main.getBoundingClientRect(), bounds=viewport.getBoundingClientRect(), x=rect.left+rect.width/2-bounds.left, y=rect.top+rect.height/2-bounds.top;
+      if (Math.hypot(point.x-x,point.y-y) <= 24*board.view.zoom) { target.pin={shape:placement.category,size:32,rotation:0}; applyPushPin(target,el); cancelPlacement(); setSelected(target.id); selectedMainPinId=target.id; refreshSupplyControls(); renderStrings(); saveNow(); return; }
+    }
   }
-
   const location = screenToWorld(point, board.view);
   const note = {id: crypto.randomUUID(), style: normalizeNoteStyle(board.noteStyle), type: placement.type, category: placement.category, title: placement.type === 'card' ? 'Notes' : placement.category, text: '', x: location.x, y: location.y, tilt: (Math.random() - .5) * 2.4};
-  if (placement.type === 'pin') { note.pin={shape:placement.category,size:48,rotation:0}; note.tilt=0; note.x-=60; note.y-=60; }
+  if (placement.type === 'pin') { note.pin={shape:placement.category,size:48,rotation:0}; note.tilt=0; note.x-=60; note.y-=60; if (target) { note.parentId=target.id; note.offsetX=note.x-target.x; note.offsetY=note.y-target.y; } }
   if (placement.type === 'card') note.cardColor = $('card-color').value;
   if (placement.type === 'image') { note.imageId = placement.imageId; note.title = placement.imageName || 'Photo'; }
   if (placement.type === 'folder') { note.folderId = placement.folderId; note.title = placement.folderName; }
@@ -1634,6 +1644,7 @@ function removeSelection() {
 }
 
 function removeElements(items, strings, tapes = new Set()) {
+  for (const pin of board.notes) if (pin.parentId && items.has(pin.parentId)) items.add(pin.id);
   record(); board.tapes = board.tapes.filter(t => !tapes.has(t.id)); board.notes = board.notes.filter(note => !items.has(note.id));
   board.connections = board.connections.filter(link => !items.has(link.from) && !items.has(link.to) && !strings.has(link.id));
   for (const id of items) { noteElements.get(id)?.remove(); noteElements.delete(id); }
@@ -1645,7 +1656,9 @@ function removeElements(items, strings, tapes = new Set()) {
 function duplicateNote(note) {
   record();
   const copy = {...note, ...(note.pin ? {pin:{...note.pin}} : {}), id: crypto.randomUUID(), x: note.x + 28, y: note.y + 28};
+  if (copy.parentId) { copy.offsetX+=28; copy.offsetY+=28; }
   board.notes.push(copy); const element = buildNote(copy, board.notes.length - 1);
+  if (note.type !== 'pin') for (const child of board.notes.filter(n => n.parentId===note.id)) { const pin={...child,id:crypto.randomUUID(),parentId:copy.id,pin:{...child.pin},x:child.x+28,y:child.y+28}; board.notes.push(pin); buildNote(pin,board.notes.length-1); }
   setSelected(copy.id); updateCounts(); renderCategories(); saveNow();
   revealOnBoard(copy, element); saveSoon();
   element.querySelector('.note-content, .folder-open, .note-drag')?.focus({preventScroll: true});
@@ -1775,6 +1788,9 @@ viewport.addEventListener('pointerdown', event => {
       {type:'notes', pointerId:event.pointerId, start:point, items:selectedNotes().map(note => ({note,x:note.x,y:note.y})), tapes:selectedTapePositions(), moved:false};
     viewport.setPointerCapture(event.pointerId); event.preventDefault(); event.stopPropagation(); return;
   }
+  if (!placement && !pan && !stringMode && noteElement && !noteElement.classList.contains('pin-item') && event.target.closest('.pin-art, .pin')) {
+    const note=board.notes.find(n=>n.id===noteElement.dataset.noteId); if (note) { setSelected(note.id); selectedMainPinId=note.id; refreshSupplyControls(); event.preventDefault(); event.stopPropagation(); return; }
+  }
   const pinControl=event.target.closest('.pin-adjust');
   if (pinControl && !pan && !placement) {
     const element=pinControl.closest('.note'), note=board.notes.find(n=>n.id===element.dataset.noteId);
@@ -1855,7 +1871,7 @@ viewport.addEventListener('pointermove', event => {
     if (gesture.type === 'notes') {
       const moved = new Set(gesture.items.map(item => item.note.id));
       board.notes = [...board.notes.filter(note => !moved.has(note.id)), ...board.notes.filter(note => moved.has(note.id))];
-      board.notes.forEach((note, i) => { noteElements.get(note.id).style.zIndex = String(i + 1); });
+      board.notes.forEach((note, i) => { noteElements.get(note.id).style.zIndex = String(note.type === 'pin' ? 100000+i : i + 1); });
     }
   }
   if (gesture.type === 'tape') {
@@ -1875,24 +1891,28 @@ viewport.addEventListener('pointermove', event => {
     board.view.x = gesture.view.x + dx; board.view.y = gesture.view.y + dy;
     viewport.classList.add('is-panning'); applyView();
   } else if (gesture.type === 'notes') {
+    const movingIds = new Set(gesture.items.map(item=>item.note.id));
     for (const item of gesture.items) {
       item.note.x = item.x + dx / board.view.zoom; item.note.y = item.y + dy / board.view.zoom;
       const element = noteElements.get(item.note.id);
       element.style.left = `${item.note.x}px`; element.style.top = `${item.note.y}px`; element.classList.add('is-dragging');
+      if (item.note.parentId && !movingIds.has(item.note.parentId)) { const parent=board.notes.find(n=>n.id===item.note.parentId); if(parent) { item.note.offsetX=item.note.x-parent.x; item.note.offsetY=item.note.y-parent.y; } }
     }
+    syncAttachedPins(movingIds);
     for (const item of gesture.tapes || []) { item.tape.x1=item.x1+dx/board.view.zoom; item.tape.y1=item.y1+dy/board.view.zoom; item.tape.x2=item.x2+dx/board.view.zoom; item.tape.y2=item.y2+dy/board.view.zoom; }
     if (gesture.tapes?.length) renderTapes();
     queueStrings();
   } else if (gesture.type === 'pin-transform') {
     const a=Math.atan2(event.clientY-gesture.cy,event.clientX-gesture.cx), d=Math.hypot(event.clientX-gesture.cx,event.clientY-gesture.cy);
     gesture.note.pin.size=Math.max(20,Math.min(100,gesture.size*d/gesture.distance)); gesture.note.pin.rotation=gesture.rotation+(a-gesture.angle)*180/Math.PI;
+    $('pin-size').value=Math.round(gesture.note.pin.size);
     const art=gesture.element.querySelector('.pin-art'); art.style.setProperty('--pin-size',`${gesture.note.pin.size}px`); art.style.setProperty('--pin-angle',`${gesture.note.pin.rotation}deg`);
   } else if (gesture.type === 'tape-end') {
     gesture.tape['x'+gesture.end] = gesture.x + dx/board.view.zoom; gesture.tape['y'+gesture.end] = gesture.y + dy/board.view.zoom; updateTapeGeometry(gesture.element, gesture.tape);
   } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
     if (gesture.type === 'resize') {
       Object.assign(gesture.note, resizePaper(gesture, dx / board.view.zoom, dy / board.view.zoom, gesture.side));
-      gesture.element.style.left = `${gesture.note.x}px`; gesture.element.style.top = `${gesture.note.y}px`;
+      gesture.element.style.left = `${gesture.note.x}px`; gesture.element.style.top = `${gesture.note.y}px`; syncAttachedPins(new Set([gesture.note.id]));
     } else gesture.note.height = Math.max(120, Math.min(2000, gesture.height + dy / board.view.zoom));
     gesture.element.classList.add('is-resizing'); autosize(gesture.note, gesture.element);
   }
@@ -1991,11 +2011,13 @@ for (const [shape, glyph] of Object.entries(PIN_SHAPES)) {
   if (shape === 'classic') continue; // Keep older boards readable without offering the slanted pin.
   const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; setPinGlyph(button,shape); const label = shape === 'board-pin' ? 'board' : shape === 'arrow' ? 'red arrow' : shape.startsWith('arrow-') ? `${shape.slice(6)} arrow` : shape; button.title=`${label} push pin`; button.setAttribute('aria-label',`${label} push pin`);
   button.addEventListener('click',()=> {
-    const selectedPin = board.notes.find(note => selected.has(note.id) && note.pin);
-    if (!pinChoosing && selected.size === 1 && selectedPin) { record(); selectedPin.pin.shape=shape; applyPushPin(selectedPin,noteElements.get(selectedPin.id)); renderStrings(); refreshSupplyControls(); saveSoon(); }
+    const selectedPin = board.notes.find(note => selected.has(note.id) && (note.pin || selectedMainPinId === note.id));
+    if (!pinChoosing && selected.size === 1 && selectedPin) { record(); selectedPin.pin ||= {shape:'board-pin',size:48,rotation:0}; selectedPin.pin.shape=shape; applyPushPin(selectedPin,noteElements.get(selectedPin.id)); renderStrings(); refreshSupplyControls(); saveSoon(); }
     else { pinChoosing=false; startPlacement('pin',shape); }
   }); $('pin-options').append(button);
 }
+$('pin-size').addEventListener('focus', record);
+$('pin-size').addEventListener('input', () => { const note=board.notes.find(n=>selected.has(n.id) && (n.pin || selectedMainPinId===n.id)); const size=Number($('pin-size').value); if (!note || !Number.isFinite(size) || size<20 || size>100) return; if (!note.pin) { note.pin={shape:'board-pin',size,rotation:0}; applyPushPin(note,noteElements.get(note.id)); renderStrings(); } else { note.pin.size=size; noteElements.get(note.id)?.querySelector('.pin-art')?.style.setProperty('--pin-size',`${size}px`); } saveSoon(); });
 $('add-pin').addEventListener('click', () => { const open=!pinChoosing; cancelGesture(); cancelPlacement(); setStringMode(false); setTapeMode(false); setSelectMode(false); setSelected(null); pinChoosing=open; refreshSupplyControls(); if (compactLayout.matches) setSidebar(false); });
 $('supply-controls-done').addEventListener('click', () => { pinChoosing=false; if (placement?.type === 'card') cancelPlacement(); if (stringMode) setStringMode(false); setSelected(null); refreshSupplyControls(); });
 $('card-color').addEventListener('change', () => { const cards=selectedNotes().filter(n=>n.type==='card'); if (!cards.length) return; record(); for (const n of cards) {n.cardColor=$('card-color').value; noteElements.get(n.id).style.setProperty('--card-color', CARD_COLORS[n.cardColor]);} saveSoon(); });

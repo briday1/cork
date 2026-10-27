@@ -158,14 +158,16 @@ export function validateBoard(data) {
     if (n.type === 'folder' && (typeof n.folderId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.folderId) || !n.title || n.title.length > 255)) throw new Error('This board contains an invalid folder link. Nothing was changed.');
     const pinShapes = ['classic','board-pin','arrow','arrow-blue','arrow-yellow','arrow-green','crown','flower','heart','bug','dog','cat','egg','duck'];
     if (n.pin !== undefined && (!n.pin || !pinShapes.includes(n.pin.shape) || !finite(n.pin.size) || n.pin.size < 20 || n.pin.size > 100 || !finite(n.pin.rotation))) throw new Error('This board contains an invalid push pin. Nothing was changed.');
+    if (n.parentId !== undefined && (n.type !== 'pin' || typeof n.parentId !== 'string' || !n.parentId || !finite(n.offsetX) || !finite(n.offsetY))) throw new Error('This board contains an invalid attached pin. Nothing was changed.');
     if (n.type === 'pin' && !n.pin) throw new Error('This board contains an invalid push pin. Nothing was changed.');
     ids.add(n.id);
     const style = normalizeNoteStyle(n.style);
-    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(Object.keys(style).length ? {style} : {}), ...(n.pin ? {pin:{shape:n.pin.shape,size:n.pin.size,rotation:n.pin.rotation}} : {}), ...(n.type === 'card' && ['white','yellow','pink','blue'].includes(n.cardColor) ? {cardColor:n.cardColor} : {}), ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
+    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(Object.keys(style).length ? {style} : {}), ...(n.pin ? {pin:{shape:n.pin.shape,size:n.pin.size,rotation:n.pin.rotation}} : {}), ...(n.parentId ? {parentId:n.parentId, offsetX:n.offsetX, offsetY:n.offsetY} : {}), ...(n.type === 'card' && ['white','yellow','pink','blue'].includes(n.cardColor) ? {cardColor:n.cardColor} : {}), ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
       ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {}),
       ...(finite(n.height) ? {height: Math.max(120, Math.min(2000, n.height))} : {}),
     })};
   });
+  for (const note of notes) if (note.parentId && !notes.some(parent => parent.id === note.parentId && parent.type !== 'pin')) throw new Error('This board contains a pin with a missing item. Nothing was changed.');
   const view = data.view;
   if (data.connections !== undefined && (!Array.isArray(data.connections) || data.connections.length > 10000)) throw new Error('This board contains invalid connections. Nothing was changed.');
   const connectionIds = new Set(), pairs = new Set();

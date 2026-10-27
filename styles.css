@@ -936,3 +936,10 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .placement-preview.pin-preview { width:48px; height:48px; min-height:0; padding:0; background:transparent; box-shadow:none; opacity:.9; }
 .placement-preview.pin-preview > .pin, .placement-preview.pin-preview > strong, .placement-preview.pin-preview > p { display:none; }
 .viewport.is-placing.is-pin-placing .note { pointer-events:auto; }
+
+/* Attached pins stay individually clickable without blocking the rest of an item. */
+.note.pin-item { pointer-events:none; }
+.note.pin-item .note-drag { inset:36px; pointer-events:auto; }
+.note.pin-item .pin-adjust, .note.pin-item .note-actions { pointer-events:auto; }
+.note:not(.pin-item) .pin-art { pointer-events:auto; cursor:pointer; }
+.supply-controls #pin-size { width:54px; padding:5px; color:var(--rail-ink); background:var(--rail-bg); border:1px solid var(--rail-rule); border-radius:4px; }

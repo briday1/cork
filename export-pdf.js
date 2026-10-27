@@ -4,7 +4,7 @@ import {boardExportLayout, pdfImagePlacement, connectionGeometry} from './export
 
 // Freeze the notes before any asynchronous rendering, including unsaved input.
 export function snapshotNotes(notes, elements) {
-  return notes.map(note => {
+  return [...notes.filter(note => note.type !== 'pin'), ...notes.filter(note => note.type === 'pin')].map(note => {
     const element = elements.get(note.id);
     const style = getComputedStyle(element);
     const width = parseFloat(style.width), height = parseFloat(style.height);
