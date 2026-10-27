@@ -852,3 +852,10 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .tape-bar button { font-size:12px; }
 .is-taping { cursor:crosshair; }
 @media(max-width:680px) { .tape-bar { max-width:calc(100% - 20px); flex-wrap:wrap; } .tape-bar input { width:100px; } }
+
+.board-file-actions { grid-column:1/-1; grid-row:4; display:flex; gap:14px; margin-top:3px; }
+.board-file-actions button { display:inline-flex; align-items:center; gap:5px; padding:5px 0; color:var(--rail-accent); font-size:11px; text-decoration:underline; text-underline-offset:3px; }
+.board-file-actions button:hover:not(:disabled) { color:var(--rail-ink); }
+.board-file-actions button:disabled { opacity:.45; }
+.board-file-actions svg { width:14px; height:14px; }
+@media(pointer:coarse) { .board-file-actions button { min-height:44px; } }
