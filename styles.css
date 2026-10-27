@@ -927,3 +927,7 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .supply-controls .pin-options { min-width:0; max-width:100%; }
 .supply-controls .pin-options button { flex:0 0 34px; width:34px; height:34px; justify-content:center; }
 @media(max-width:680px) { .supply-controls .pin-options button { flex-basis:40px; width:40px; height:40px; } }
+
+/* Pins are cutouts: do not paint the note's translucent highlight behind them. */
+.note.pin-item::before, .note.pin-item::after { display:none; }
+.note.pin-item, .note.pin-item .note-drag { background:transparent; }

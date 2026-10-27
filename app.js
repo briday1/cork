@@ -1979,6 +1979,7 @@ $('download-categories').addEventListener('click', () => {
 });
 $('random-note').addEventListener('click', randomCategory);
 for (const [shape, glyph] of Object.entries(PIN_SHAPES)) {
+  if (shape === 'classic') continue; // Keep older boards readable without offering the slanted pin.
   const button=document.createElement('button'); button.type='button'; button.dataset.shape=shape; setPinGlyph(button,shape); const label = shape === 'board-pin' ? 'board' : shape === 'arrow' ? 'red arrow' : shape.startsWith('arrow-') ? `${shape.slice(6)} arrow` : shape; button.title=`${label} push pin`; button.setAttribute('aria-label',`${label} push pin`);
   button.addEventListener('click',()=> {
     const selectedPin = board.notes.find(note => selected.has(note.id) && note.pin);
