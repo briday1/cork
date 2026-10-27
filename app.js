@@ -1562,7 +1562,15 @@ function startPlacement(type, category = '', assetId = null, folderName = '') {
   updateHandMode(); setSelected(null);
   placement = {type, category, imageId: type === 'image' ? assetId : null, folderId: type === 'folder' ? assetId : null, folderName};
   viewport.classList.add('is-placing');
-  $('placement-preview').hidden = type === 'pin';
+  viewport.classList.toggle('is-pin-placing', type === 'pin');
+  const preview = $('placement-preview'); preview.hidden = false;
+  preview.classList.toggle('pin-preview', type === 'pin');
+  preview.querySelector('.pin-preview-art')?.remove();
+  if (type === 'pin') {
+    const art = document.createElement('span'); art.className='pin-art pin-preview-art';
+    setPinGlyph(art, category); if (category === 'board-pin') art.style.filter='none';
+    preview.append(art);
+  }
   $('placement-preview').classList.toggle('index-preview', type === 'card');
   $('placement-preview').classList.toggle('photo-preview', type === 'image');
   $('placement-preview').classList.toggle('folder-preview', type === 'folder');
@@ -1584,12 +1592,13 @@ function startPlacement(type, category = '', assetId = null, folderName = '') {
 
 function movePreview(point) {
   const preview = $('placement-preview');
-  preview.style.left = `${point.x}px`; preview.style.top = `${point.y}px`;
-  preview.style.transform = `scale(${board.view.zoom}) rotate(-2deg)`;
+  const pin = placement?.type === 'pin', offset = pin ? 24 * board.view.zoom : 0;
+  preview.style.left = `${point.x-offset}px`; preview.style.top = `${point.y-offset}px`;
+  preview.style.transform = `scale(${board.view.zoom}) rotate(${pin ? 0 : -2}deg)`;
 }
 
 function cancelPlacement() {
-  placement = null; viewport.classList.remove('is-placing');
+  placement = null; viewport.classList.remove('is-placing', 'is-pin-placing');
   $('placement-preview').hidden = true; $('placement-bar').hidden = true;
   renderCategories(); refreshSupplyControls();
 }
@@ -1736,7 +1745,7 @@ viewport.addEventListener('pointerdown', event => {
   const noteElement = event.target.closest('.note');
   if (stringMode && noteElement) { event.preventDefault(); event.stopPropagation(); return; }
   const pan = handMode || spaceHeld || event.button === 1;
-  if (event.target.closest('.connection-hit') && !pan) {
+  if (event.target.closest('.connection-hit') && !pan && !placement) {
     if (event.shiftKey || selectMode) event.preventDefault();
     return;
   }
@@ -1926,7 +1935,7 @@ function endGesture(event) {
 window.addEventListener('pointerup', endGesture);
 window.addEventListener('pointercancel', endGesture);
 viewport.addEventListener('pointerleave', () => { if (placement && !gesture) $('placement-preview').hidden = true; });
-viewport.addEventListener('pointerenter', () => { if (placement && placement.type !== 'pin') $('placement-preview').hidden = false; });
+viewport.addEventListener('pointerenter', () => { if (placement) $('placement-preview').hidden = false; });
 viewport.addEventListener('wheel', event => {
   // Leave note text and floating controls alone; the cork itself always zooms.
   if (event.target.closest('.note-content, .note-title-input, .board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;

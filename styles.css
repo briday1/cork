@@ -931,3 +931,8 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 /* Pins are cutouts: do not paint the note's translucent highlight behind them. */
 .note.pin-item::before, .note.pin-item::after { display:none; }
 .note.pin-item, .note.pin-item .note-drag { background:transparent; }
+
+/* Let a chosen pin follow the pointer and attach to an existing item. */
+.placement-preview.pin-preview { width:48px; height:48px; min-height:0; padding:0; background:transparent; box-shadow:none; opacity:.9; }
+.placement-preview.pin-preview > .pin, .placement-preview.pin-preview > strong, .placement-preview.pin-preview > p { display:none; }
+.viewport.is-placing.is-pin-placing .note { pointer-events:auto; }
