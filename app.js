@@ -832,7 +832,14 @@ function setPinGlyph(element, shape) {
     Object.assign(head.style, {display:'inline-block', width:size, height:size, borderRadius:'50%', background:'radial-gradient(circle at 35% 25%,#ffe4d9 0 13%,#d75e48 28%,#8c2d20 72%)', boxShadow:'1px 3px 3px #30201577,inset -1px -1px 2px #57181088'});
     element.append(head); return;
   }
-  if (!Object.hasOwn(ARROW_PIN_COLORS, shape)) { element.textContent=PIN_SHAPES[shape]; return; }
+  if (!Object.hasOwn(ARROW_PIN_COLORS, shape)) {
+    if (!element.classList.contains('pin-art')) { element.textContent=PIN_SHAPES[shape]; return; }
+    // Prevent the emoji's intrinsic width from expanding the grid track and
+    // shifting the visible glyph away from the pin's rotation/connection center.
+    const glyph=document.createElement('span'); glyph.textContent=PIN_SHAPES[shape];
+    Object.assign(glyph.style, {display:'block', width:'100%', minWidth:'0', textAlign:'center', lineHeight:'1'});
+    element.append(glyph); return;
+  }
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 64 64'); svg.setAttribute('aria-hidden','true');
   const previewSize = element.classList.contains('pin-art') ? '85%' : '24px';
