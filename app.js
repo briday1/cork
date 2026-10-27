@@ -823,7 +823,7 @@ function setTapeMode(active, keepSelection = false) {
   $('add-tape').setAttribute('aria-pressed', String(active));
   const tape = board.tapes?.find(t => t.id === selectedTape);
   $('tape-bar').hidden = !active && !tape;
-  $('tape-text-label').hidden = !tape; $('tape-delete').hidden = !tape; $('tape-hint').hidden = !active;
+  $('tape-text-label').hidden = !tape; $('tape-duplicate').hidden = !tape; $('tape-delete').hidden = !tape; $('tape-hint').hidden = !active;
   if (tape) { $('tape-color').value = tape.color; $('tape-text').value = tape.text; }
   if (tapeLayer?.isConnected) renderTapes();
 }
@@ -868,6 +868,14 @@ $('tape-done').addEventListener('click', () => setTapeMode(false));
 $('tape-color').addEventListener('change', () => { const tape=board.tapes.find(t => t.id===selectedTape); if (tape) { record(); tape.color=$('tape-color').value; renderTapes(); saveSoon(); } });
 $('tape-text').addEventListener('focus', record);
 $('tape-text').addEventListener('input', () => { const tape=board.tapes.find(t => t.id===selectedTape); if (tape) { tape.text=$('tape-text').value; renderTapes(); saveSoon(); } });
+$('tape-duplicate').addEventListener('click', () => {
+  const tape = board.tapes.find(t => t.id === selectedTape);
+  if (!tape) return;
+  record();
+  const copy = {...tape, id:crypto.randomUUID(), x1:tape.x1+28, y1:tape.y1+28, x2:tape.x2+28, y2:tape.y2+28};
+  board.tapes.push(copy); setSelected(null); selectedTapes.add(copy.id); selectedTape=copy.id;
+  setTapeMode(false, true); updateCounts(); saveNow();
+});
 $('tape-delete').addEventListener('click', () => { if (!selectedTape) return; removeElements(new Set(), new Set(), new Set([selectedTape])); });
 
 function queueStrings() {
