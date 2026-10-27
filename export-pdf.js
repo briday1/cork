@@ -88,8 +88,8 @@ export async function createBoardPdf(name, notes, connections = [], tapes = [], 
       const path = `M ${point(curve.from)} Q ${point(curve.control)} ${point(curve.to)}`;
       const palette = {red:[[.62,.18,.15],[.88,.43,.34]], blue:[[.14,.35,.65],[.62,.76,.94]], yellow:[[.71,.54,.03],[1,.88,.48]], green:[[.20,.46,.29],[.61,.86,.61]], black:[[.16,.17,.19],[.64,.64,.65]], white:[[.78,.78,.75],[1,1,1]]};
       const [base, highlight] = palette[connection.color] || palette.red;
-      page.drawSvgPath(path, {x: 0, y: layout.pageHeight, scale: layout.scale, borderColor: rgb(...base), borderWidth: 2.4});
-      page.drawSvgPath(path, {x: 0, y: layout.pageHeight, scale: layout.scale, borderColor: rgb(...highlight), borderWidth: .65, borderDashArray: [1, 2]});
+      page.drawSvgPath(path, {x: 0, y: layout.pageHeight, scale: layout.scale, borderColor: rgb(...base), borderWidth: connection.width || 2.4});
+      page.drawSvgPath(path, {x: 0, y: layout.pageHeight, scale: layout.scale, borderColor: rgb(...highlight), borderWidth: (connection.width || 2.4) * .65 / 2.4, borderDashArray: [1, 2]});
       if (!from.pin) pins.set(from.id, curve.from); if (!to.pin) pins.set(to.id, curve.to);
     }
     for (const pin of pins.values()) {

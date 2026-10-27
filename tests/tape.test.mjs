@@ -93,3 +93,14 @@ test('check mark and X pin shapes remain valid after saving', () => {
     assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,shape);
   }
 });
+
+test('string thickness survives board save and legacy strings keep the regular default', () => {
+  const board = blankBoard();
+  board.notes.push({id:'a',type:'card',category:'',title:'A',text:'',x:0,y:0,tilt:0}, {id:'b',type:'card',category:'',title:'B',text:'',x:300,y:0,tilt:0});
+  for (const width of [1.2, 4.8, 7.2]) {
+    board.connections = [{id:'link',from:'a',to:'b',width}];
+    assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).connections[0].width, width);
+  }
+  board.connections = [{id:'link',from:'a',to:'b'}];
+  assert.equal(validateBoard(board).connections[0].width, undefined);
+});

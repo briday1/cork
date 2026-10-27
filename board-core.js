@@ -176,7 +176,7 @@ export function validateBoard(data) {
     const pair = JSON.stringify([connection.from, connection.to].sort());
     if (pairs.has(pair)) throw new Error('This board contains a duplicate connection. Nothing was changed.');
     pairs.add(pair); connectionIds.add(connection.id);
-    return {id: connection.id, from: connection.from, to: connection.to, ...(['red','blue','yellow','green','black','white'].includes(connection.color) && connection.color !== 'red' ? {color:connection.color} : {})};
+    return {id: connection.id, from: connection.from, to: connection.to, ...(['red','blue','yellow','green','black','white'].includes(connection.color) && connection.color !== 'red' ? {color:connection.color} : {}), ...([1.2, 2.4, 4.8, 7.2].includes(connection.width) && connection.width !== 2.4 ? {width:connection.width} : {})};
   });
   if (data.tapes !== undefined && (!Array.isArray(data.tapes) || data.tapes.length > 5000)) throw new Error('This board contains invalid tape. Nothing was changed.');
   const tapeIds = new Set();

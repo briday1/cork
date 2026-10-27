@@ -948,7 +948,7 @@ function chooseStringItem(id) {
   }
   if (id === stringStart) return;
   if (!board.connections.some(link => link.from === stringStart && link.to === id || link.from === id && link.to === stringStart)) {
-    record(); board.connections.push({id: crypto.randomUUID(), from: stringStart, to: id, color:$('string-color').value}); saveNow();
+    record(); board.connections.push({id: crypto.randomUUID(), from: stringStart, to: id, color:$('string-color').value, width:Number($('string-width').value) || 2.4}); saveNow();
   }
   setStringMode(false); renderStrings();
 }
@@ -974,7 +974,10 @@ function renderStrings() {
     const d = `M ${curve.from.x} ${curve.from.y} Q ${curve.control.x} ${curve.control.y} ${curve.to.x} ${curve.to.y}`;
     const group = svg('g', {class: `yarn${selectedStrings.has(connection.id) ? ' is-selected' : ''}`, 'data-connection-id': connection.id});
     const colors = STRING_COLORS[connection.color] || STRING_COLORS.red; group.style.setProperty('--yarn-color',colors[0]); group.style.setProperty('--yarn-highlight',colors[1]);
-    group.append(svg('path', {d, class: 'yarn-base'}), svg('path', {d, class: 'yarn-twist'}));
+    const width = connection.width || 2.4;
+    const base = svg('path', {d, class: 'yarn-base'}), twist = svg('path', {d, class: 'yarn-twist'});
+    base.style.strokeWidth = width; twist.style.strokeWidth = width * .7 / 2.4;
+    group.append(base, twist);
     const hit = svg('path', {d, class: 'connection-hit', tabindex: '0', role: 'button', 'aria-pressed': String(selectedStrings.has(connection.id)), 'aria-label': 'Connection. Press Delete to remove.'});
     hit.addEventListener('click', event => {
       event.stopPropagation();
@@ -1117,11 +1120,12 @@ function refreshSupplyControls() {
   if (context === 'pin-edit') $('pin-size').value = Math.round(pinConfig.size);
   $('card-color-control').hidden = !context.startsWith('card');
   $('string-color-control').hidden = !context.startsWith('string');
+  $('string-width-control').hidden = !context.startsWith('string');
   $('add-pin').setAttribute('aria-pressed', String(pinChoosing));
   $('supply-controls-title').textContent = context.startsWith('pin') ? 'Push pins' : context.startsWith('card') ? 'Index card' : 'String';
   $('supply-controls-hint').textContent = context === 'pin-new' ? 'Choose a pin, then place it.' : context === 'pin-edit' ? 'Drag the handle to resize and rotate.' : context === 'card-new' ? 'Choose a color, then place the card.' : context === 'string-new' ? 'Choose a color, then select two items.' : '';
   if (context === 'card-edit') { const colors = new Set(notes.map(n => n.cardColor || 'white')); $('card-color').value = colors.size === 1 ? [...colors][0] : ''; }
-  if (context === 'string-edit') { const colors = new Set(selectedLinks.map(n => n.color || 'red')); $('string-color').value = colors.size === 1 ? [...colors][0] : ''; }
+  if (context === 'string-edit') { const colors = new Set(selectedLinks.map(n => n.color || 'red')); $('string-color').value = colors.size === 1 ? [...colors][0] : ''; const widths = new Set(selectedLinks.map(n => n.width || 2.4)); $('string-width').value = widths.size === 1 ? String([...widths][0]) : ''; }
   for (const button of $('pin-options').querySelectorAll('button')) button.setAttribute('aria-pressed', String(Boolean(selectedPin && context === 'pin-edit' && button.dataset.shape === pinConfig.shape)));
 }
 
@@ -2058,6 +2062,7 @@ $('add-pin').addEventListener('click', () => { const open=!pinChoosing; cancelGe
 $('supply-controls-done').addEventListener('click', () => { pinChoosing=false; if (placement?.type === 'card') cancelPlacement(); if (stringMode) setStringMode(false); setSelected(null); refreshSupplyControls(); });
 $('card-color').addEventListener('change', () => { const cards=selectedNotes().filter(n=>n.type==='card'); if (!cards.length) return; record(); for (const n of cards) {n.cardColor=$('card-color').value; noteElements.get(n.id).style.setProperty('--card-color', CARD_COLORS[n.cardColor]);} saveSoon(); });
 $('string-color').addEventListener('change', () => { const links=board.connections.filter(c=>selectedStrings.has(c.id)); if (!links.length) return; record(); for (const c of links) c.color=$('string-color').value; renderStrings(); saveSoon(); });
+$('string-width').addEventListener('change', () => { const links=board.connections.filter(c=>selectedStrings.has(c.id)); if (!links.length) return; record(); for (const c of links) c.width=Number($('string-width').value); renderStrings(); saveSoon(); });
 $('add-card').addEventListener('click', () => startPlacement('card'));
 $('add-image').addEventListener('click', () => { imagePickSession = activeSession; $('image-file').click(); });
 if (typeof window.showDirectoryPicker !== 'function') $('add-folder').title = 'Choose a folder. This browser asks you to select it again when opening a folder tile.';
