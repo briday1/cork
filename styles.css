@@ -922,3 +922,8 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .tape-bar { color:var(--rail-ink); background:var(--rail-bg); border-color:var(--rail-rule); }
 .tape-bar select, .tape-bar input { background:var(--rail-bg); color:var(--rail-ink); border-color:var(--rail-rule); }
 .tape-bar button { color:var(--rail-ink); border-color:var(--rail-rule); }
+
+/* Keep every pin choice compact and allow the picker to wrap. */
+.supply-controls .pin-options { min-width:0; max-width:100%; }
+.supply-controls .pin-options button { flex:0 0 34px; width:34px; height:34px; justify-content:center; }
+@media(max-width:680px) { .supply-controls .pin-options button { flex-basis:40px; width:40px; height:40px; } }

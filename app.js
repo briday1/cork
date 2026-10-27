@@ -835,7 +835,8 @@ function setPinGlyph(element, shape) {
   if (!Object.hasOwn(ARROW_PIN_COLORS, shape)) { element.textContent=PIN_SHAPES[shape]; return; }
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 64 64'); svg.setAttribute('aria-hidden','true');
-  svg.style.width='85%'; svg.style.height='85%';
+  const previewSize = element.classList.contains('pin-art') ? '85%' : '24px';
+  svg.style.width=previewSize; svg.style.height=previewSize;
   const path=document.createElementNS('http://www.w3.org/2000/svg','path');
   path.setAttribute('d','M 5 23 L 35 23 L 35 10 L 60 32 L 35 54 L 35 41 L 5 41 Z');
   path.setAttribute('fill',ARROW_PIN_COLORS[shape]); path.setAttribute('stroke','#321d1a'); path.setAttribute('stroke-opacity','.3'); path.setAttribute('stroke-width','1.5'); path.setAttribute('stroke-linejoin','round');
