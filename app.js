@@ -827,6 +827,18 @@ function setTapeMode(active, keepSelection = false) {
   if (tape) { $('tape-color').value = tape.color; $('tape-text').value = tape.text; }
   if (tapeLayer?.isConnected) renderTapes();
 }
+function updateTapeGeometry(group, tape) {
+  const length = Math.hypot(tape.x2-tape.x1, tape.y2-tape.y1);
+  const angle = length ? Math.atan2(tape.y2-tape.y1, tape.x2-tape.x1)*180/Math.PI : Number(group.dataset.angle || 0);
+  group.dataset.angle = angle;
+  group.setAttribute('transform', `translate(${tape.x1} ${tape.y1}) rotate(${angle})`);
+  const seed = [...tape.id].reduce((n,c) => (n*31+c.charCodeAt(0))>>>0, 7);
+  const scale = Math.min(1, length/16), a = (2 + seed%5)*scale, b = (2 + (seed>>>4)%5)*scale;
+  group.querySelector('path').setAttribute('d', `M ${a} -16 L ${length-b} -16 L ${length-2*scale} -10 L ${length-b} -5 L ${length-scale} 0 L ${length-b} 6 L ${length-3*scale} 11 L ${length-b} 16 L ${a} 16 L ${2*scale} 11 L ${a} 6 L ${scale} 0 L ${a} -5 L ${2*scale} -11 Z`);
+  const label = group.querySelector('text');
+  if (label) { label.setAttribute('x', length/2); if (tape.text.length*9 > length-20) label.setAttribute('textLength', Math.max(1,length-20)); else label.removeAttribute('textLength'); }
+  group.querySelector('[data-end="2"]')?.setAttribute('cx', length);
+}
 function renderTapes(preview = null) {
   if (!tapeLayer?.isConnected) { tapeLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); tapeLayer.classList.add('tape-layer'); world.prepend(tapeLayer); }
   tapeLayer.replaceChildren();
@@ -848,6 +860,7 @@ function renderTapes(preview = null) {
       group.addEventListener('keydown', e => { if ((e.key==='Enter' || e.key===' ') && e.target===group) { e.preventDefault(); e.stopPropagation(); if (!selectMode && !e.shiftKey) setSelected(null); selectedTapes.add(tape.id); selectedTape=tape.id; setTapeMode(false,true); updateSelection(); tapeLayer.querySelector(`[data-tape-id="${tape.id}"]`)?.focus(); } });
     }
     tapeLayer.append(group);
+    updateTapeGeometry(group, tape);
   }
 }
 $('add-tape').addEventListener('click', () => { cancelGesture(); cancelPlacement(); setStringMode(false); setSelectMode(false); handMode=false; spaceHeld=false; updateHandMode(); setSelected(null); setTapeMode(!tapeMode); if (compactLayout.matches) setSidebar(false); });
@@ -1650,7 +1663,7 @@ viewport.addEventListener('pointerdown', event => {
       setTapeMode(false, Boolean(selectedTape)); updateSelection();
     }
     document.activeElement?.blur(); viewport.focus({preventScroll:true});
-    gesture = end ? {type:'tape-end', pointerId:event.pointerId, start:point, tape, end, x:tape['x'+end], y:tape['y'+end], moved:false} :
+    gesture = end ? {type:'tape-end', pointerId:event.pointerId, start:point, tape, end, element:tapeElement, x:tape['x'+end], y:tape['y'+end], moved:false} :
       {type:'notes', pointerId:event.pointerId, start:point, items:selectedNotes().map(note => ({note,x:note.x,y:note.y})), tapes:selectedTapePositions(), moved:false};
     viewport.setPointerCapture(event.pointerId); event.preventDefault(); event.stopPropagation(); return;
   }
@@ -1758,7 +1771,7 @@ viewport.addEventListener('pointermove', event => {
     if (gesture.tapes?.length) renderTapes();
     queueStrings();
   } else if (gesture.type === 'tape-end') {
-    gesture.tape['x'+gesture.end] = gesture.x + dx/board.view.zoom; gesture.tape['y'+gesture.end] = gesture.y + dy/board.view.zoom; renderTapes();
+    gesture.tape['x'+gesture.end] = gesture.x + dx/board.view.zoom; gesture.tape['y'+gesture.end] = gesture.y + dy/board.view.zoom; updateTapeGeometry(gesture.element, gesture.tape);
   } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
     if (gesture.type === 'resize') {
       Object.assign(gesture.note, resizePaper(gesture, dx / board.view.zoom, dy / board.view.zoom, gesture.side));
