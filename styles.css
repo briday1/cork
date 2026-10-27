@@ -943,3 +943,9 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .note.pin-item .pin-adjust, .note.pin-item .note-actions { pointer-events:auto; }
 .note:not(.pin-item) .pin-art { pointer-events:auto; cursor:pointer; }
 .supply-controls #pin-size { width:54px; padding:5px; color:var(--rail-ink); background:var(--rail-bg); border:1px solid var(--rail-rule); border-radius:4px; }
+
+.board-file-actions { flex-wrap:wrap; gap:4px 14px; }
+.email-dialog { max-width:470px; }
+.email-category-choice { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--rail-ink); }
+.email-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.email-dialog #email-status { min-height:1.5em; }

@@ -822,7 +822,7 @@ function updateCounts() {
 }
 
 
-const PIN_SHAPES = {'board-pin':'', classic:'📌', arrow:'', 'arrow-blue':'', 'arrow-yellow':'', 'arrow-green':'', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆'};
+const PIN_SHAPES = {'board-pin':'', classic:'📌', arrow:'', 'arrow-blue':'', 'arrow-yellow':'', 'arrow-green':'', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆', music:'🎵'};
 const ARROW_PIN_COLORS = {arrow:'#c63832', 'arrow-blue':'#3266bd', 'arrow-yellow':'#e2ad1d', 'arrow-green':'#388b50'};
 function setPinGlyph(element, shape) {
   element.replaceChildren();
@@ -2211,6 +2211,52 @@ async function boardBlob(snapshot) {
   const images = await exportImages(snapshot.notes);
   return new Blob([JSON.stringify({...snapshot, images, exportedAt: new Date().toISOString()}, null, 2)], {type: 'application/json'});
 }
+
+let emailFiles = null, emailPreparation = 0;
+function updateEmailActions() {
+  const files = emailFiles ? [emailFiles.board, ...($('email-categories').checked && emailFiles.categories ? [emailFiles.categories] : [])] : [];
+  let canShare = false;
+  try { canShare = Boolean(files.length && navigator.share && navigator.canShare?.({files})); } catch { /* Offer downloads when the browser cannot share these files. */ }
+  $('email-share-option').hidden = !canShare; $('email-fallback').hidden = canShare;
+  $('email-share').disabled = !files.length; $('email-download').disabled = !files.length; $('email-open').disabled = !files.length;
+}
+$('email-board').addEventListener('click', async () => {
+  const revision = ++emailPreparation; emailFiles = null;
+  $('email-categories').checked = false;
+  $('email-categories').disabled = !categoriesReady || categoryLoadFailed || !flushCategoryEdits();
+  $('email-status').textContent = 'Preparing your board…'; updateEmailActions(); $('email-dialog').showModal();
+  try {
+    const snapshot=validateBoard(JSON.parse(JSON.stringify(board)));
+    const categorySnapshot=categoryText;
+    const blob=await boardBlob(snapshot);
+    if (revision !== emailPreparation || !$('email-dialog').open) return;
+    const name=snapshot.name.replace(/[^a-z0-9 _-]/gi,'').trim() || 'cork-board';
+    emailFiles={board:new File([blob],`${name}.json`,{type:'application/json'}), categories:new File([categorySnapshot],'categories.txt',{type:'text/plain'}), title:snapshot.name};
+    $('email-status').textContent='Your board file is ready.'; updateEmailActions();
+  } catch (error) { if (revision === emailPreparation) $('email-status').textContent=`Could not prepare the board: ${error.message}`; }
+});
+$('email-categories').addEventListener('change', updateEmailActions);
+$('email-dialog').addEventListener('close', () => { emailPreparation++; emailFiles=null; });
+$('email-cancel').addEventListener('click', () => $('email-dialog').close());
+$('email-share').addEventListener('click', async () => {
+  if (!emailFiles) return;
+  const files=[emailFiles.board, ...($('email-categories').checked ? [emailFiles.categories] : [])];
+  try { await navigator.share({files, title:emailFiles.title}); $('email-dialog').close(); }
+  catch (error) { if (error.name !== 'AbortError') { $('email-status').textContent='Could not open the share sheet. You can download the files and attach them to an email.'; $('email-share-option').hidden=true; $('email-fallback').hidden=false; } }
+});
+$('email-download').addEventListener('click', () => {
+  if (!emailFiles) return;
+  downloadBlob(emailFiles.board,emailFiles.board.name);
+  if ($('email-categories').checked) downloadBlob(emailFiles.categories,emailFiles.categories.name);
+  $('email-status').textContent='Downloaded. Attach the file'+($('email-categories').checked ? 's' : '')+' to your email.';
+});
+$('email-open').addEventListener('click', () => {
+  if (!emailFiles) return;
+  const subject=encodeURIComponent(`Cork board: ${emailFiles.title}`);
+  const names=[emailFiles.board.name, ...($('email-categories').checked ? [emailFiles.categories.name] : [])];
+  const body=encodeURIComponent(`Please see the attached Cork board.\n\nAttach: ${names.join(', ')}`);
+  window.location.href=`mailto:?subject=${subject}&body=${body}`;
+});
 
 async function matchingBoard(handle, exceptId = null) {
   for (const entry of workspace.boards) {

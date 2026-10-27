@@ -74,3 +74,8 @@ test('string anchors stay at the rotational center for standalone and attached-i
     assert.deepEqual(curve.to,{x:400,y:115});
   }
 });
+
+test('a music note pin survives saving and reopening', () => {
+  const board=blankBoard(); board.notes.push({id:'music',type:'pin',category:'music',title:'music',text:'',x:0,y:0,tilt:0,pin:{shape:'music',size:48,rotation:0}});
+  assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,'music');
+});
