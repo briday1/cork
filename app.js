@@ -393,7 +393,11 @@ function toast(message, withUndo = false) {
 
 function colorFor(category) {
   const name = categories.find(name => name.toLocaleLowerCase() === category.trim().toLocaleLowerCase()) || category;
-  return categoryColor(name, categories, board.palette);
+  const byKey = new Map(categories.map(value => [value.toLocaleLowerCase(),value]));
+  const ordered = (board.colorOrder || []).map(value => byKey.get(value.toLocaleLowerCase())).filter(Boolean);
+  const used = new Set(ordered.map(value => value.toLocaleLowerCase()));
+  const colorCategories = [...ordered, ...categories.filter(value => !used.has(value.toLocaleLowerCase()))];
+  return categoryColor(name, colorCategories, board.palette);
 }
 
 function applyCategoryText(text) {
@@ -791,13 +795,14 @@ function changeTextStyle(part, field, value, recordChange = true) {
 function renderPalette() {
   $('palette').value = board.palette;
   $('theme').value = board.theme;
+  $('reset-color-order').hidden = !board.colorOrder?.length;
   renderTextControls();
   document.body.dataset.theme = board.theme;
   const preview = $('palette-preview'); preview.replaceChildren();
   for (let i = 0; i < 9; i++) {
     const swatch = document.createElement('span');
     const dummy = Array.from({length: 9}, (_, index) => String(index));
-    swatch.style.background = categoryColor(String(i), dummy, board.palette);
+    swatch.style.background = categories[i] ? colorFor(categories[i]) : categoryColor(String(i), dummy, board.palette);
     preview.append(swatch);
   }
 }
@@ -1980,6 +1985,15 @@ $('image-file').addEventListener('change', async event => {
 });
 $('cancel-placement').addEventListener('click', cancelPlacement);
 $('retry-categories').addEventListener('click', loadDefaultCategories);
+$('shuffle-colors').addEventListener('click', () => {
+  if (categories.length < 2) { toast('Add at least two categories to shuffle their colors.'); return; }
+  const old = board.colorOrder?.length ? board.colorOrder : categories;
+  const order = [...categories], numbers = new Uint32Array(order.length); crypto.getRandomValues(numbers);
+  for (let i=order.length-1; i>0; i--) { const j=Math.floor(numbers[i]/4294967296*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+  if (order.every((value,i)=>value===old[i])) order.push(order.shift());
+  record(); board.colorOrder=order; renderCategories(); renderPalette(); updateNoteColors(); saveNow();
+});
+$('reset-color-order').addEventListener('click', () => { record(); delete board.colorOrder; renderCategories(); renderPalette(); updateNoteColors(); saveNow(); });
 $('palette').addEventListener('change', () => { record(); board.palette = $('palette').value; renderCategories(); renderPalette(); updateNoteColors(); saveNow(); });
 $('theme').addEventListener('change', () => { record(); board.theme = $('theme').value; renderPalette(); applyView(); saveNow(); });
 $('text-target').addEventListener('change', () => { textTarget = $('text-target').value; renderTextControls(); });

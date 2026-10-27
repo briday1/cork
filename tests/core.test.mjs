@@ -161,3 +161,11 @@ test('mixed palettes keep adjacent categories distinct and survive board validat
     assert.equal(validateBoard({...blankBoard(), palette}).palette, palette);
   }
 });
+
+test('new paper colors and shuffled category order survive board validation', () => {
+  for (const theme of ['paper-rose','paper-lavender','paper-mint','paper-peach','paper-yellow','paper-gray','paper-sky','paper-terracotta']) {
+    const board = validateBoard({...blankBoard(), theme, colorOrder:['Second', 'First']});
+    assert.equal(board.theme, theme);
+    assert.deepEqual(board.colorOrder, ['Second', 'First']);
+  }
+});

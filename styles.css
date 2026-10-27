@@ -105,6 +105,14 @@ svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke
 body[data-theme=paper-cream]{--board-paper:#e8d9b9}
 body[data-theme=paper-sage]{--board-paper:#b8c3ad}
 body[data-theme=paper-blue]{--board-paper:#afc1cf}
+body[data-theme=paper-rose]{--board-paper:#dcb6b7}
+body[data-theme=paper-lavender]{--board-paper:#c6bad1}
+body[data-theme=paper-mint]{--board-paper:#b5d4c2}
+body[data-theme=paper-peach]{--board-paper:#e6bea8}
+body[data-theme=paper-yellow]{--board-paper:#e6d69d}
+body[data-theme=paper-gray]{--board-paper:#c6c5bf}
+body[data-theme=paper-sky]{--board-paper:#b2d6dc}
+body[data-theme=paper-terracotta]{--board-paper:#cb9f8a}
 body[data-theme^="paper-"] .viewport{background:var(--board-paper)}
 .paper-tile{position:absolute;width:512px;height:512px;background:var(--board-paper)}
 .board-world{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0}
@@ -894,3 +902,7 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .note:hover .pin,.note:focus-within .pin,.note-drag .pin { opacity:1; }
 
 .note.polaroid .pin, .note.manila-folder .pin { width:11px; height:11px; background:radial-gradient(circle at 35% 25%,#ffe4d9 0 13%,#d75e48 28%,#8c2d20 72%); }
+
+.shuffle-actions { grid-column:1/-1; display:flex; flex-wrap:wrap; gap:8px; margin-top:7px; }
+.shuffle-actions button { color:var(--rail-accent); font-size:11px; text-decoration:underline; text-underline-offset:3px; padding:5px 0; }
+@media(pointer:coarse) { .shuffle-actions button { min-height:44px; } }
