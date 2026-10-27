@@ -836,7 +836,7 @@ function renderTapes(preview = null) {
     const seed = [...tape.id].reduce((n,c) => (n*31+c.charCodeAt(0))>>>0, 7);
     const a = 2 + seed%5, b = 2 + (seed>>>4)%5;
     group.append(svg('path', {d:`M ${a} -16 L ${length-b} -16 L ${length-2} -10 L ${length-b} -5 L ${length-1} 0 L ${length-b} 6 L ${length-3} 11 L ${length-b} 16 L ${a} 16 L 2 11 L ${a} 6 L 1 0 L ${a} -5 L 2 -11 Z`, fill:TAPE_COLORS[tape.color], stroke:'#000', 'stroke-opacity':'.16', 'stroke-width':'1'}));
-    const text = svg('text', {x:length/2, y:0, 'text-anchor':'middle', 'dominant-baseline':'central', fill:['white','yellow'].includes(tape.color)?'#222':'#fff', 'font-family':'sans-serif', 'font-size':'15', 'font-weight':'600', 'pointer-events':'none', textLength:Math.max(1, length-20), lengthAdjust:'spacingAndGlyphs'});
+    const text = svg('text', {x:length/2, y:0, 'text-anchor':'middle', 'dominant-baseline':'central', fill:tape.color === 'white' ? '#000' : '#fff', 'font-family':'sans-serif', 'font-size':'15', 'font-weight':'600', 'pointer-events':'none', textLength:Math.max(1, length-20), lengthAdjust:'spacingAndGlyphs'});
     if (tape.text) { text.removeAttribute('textLength'); if (tape.text.length*9 > length-20) text.setAttribute('textLength', Math.max(1,length-20)); text.textContent=tape.text; group.append(text); }
     if (tape.id !== 'preview') { group.addEventListener('click', e => { e.stopPropagation(); if (handMode || spaceHeld) return; setSelected(null); selectedTape=tape.id; setTapeMode(false,true); }); group.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedTape=tape.id; setTapeMode(false,true); } }); }
     tapeLayer.append(group);

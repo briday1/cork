@@ -843,7 +843,7 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 
 .tape-layer { position:absolute; left:0; top:0; width:1px; height:1px; overflow:visible; z-index:0; pointer-events:none; }
 .tape-piece { pointer-events:visiblePainted; cursor:pointer; }
-.tape-piece.is-selected { filter:drop-shadow(0 0 3px #00cdd2); }
+.tape-piece.is-selected path { filter:drop-shadow(0 0 3px #00cdd2); }
 .tape-bar { z-index:20001; }
 .tape-bar label { display:flex; align-items:center; gap:5px; white-space:nowrap; }
 .tape-bar input { width:145px; min-width:0; }

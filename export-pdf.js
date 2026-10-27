@@ -57,7 +57,7 @@ export async function createBoardPdf(name, notes, connections = [], tapes = [], 
       const ctx = canvas.getContext('2d'); ctx.scale(ratio,ratio);
       const seed = [...tape.id].reduce((n,c) => (n*31+c.charCodeAt(0))>>>0, 7), a=2+seed%5, b=2+(seed>>>4)%5;
       ctx.beginPath(); ctx.moveTo(a,0); for (const [x,y] of [[length-b,0],[length-2,6],[length-b,11],[length-1,16],[length-b,22],[length-3,27],[length-b,32],[a,32],[2,27],[a,22],[1,16],[a,11],[2,5]]) ctx.lineTo(x,y); ctx.closePath(); ctx.fillStyle=colors[tape.color]; ctx.fill();
-      ctx.fillStyle=['white','yellow'].includes(tape.color)?'#222':'#fff'; ctx.font='600 15px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; if (tape.text) ctx.fillText(tape.text,length/2,16,Math.max(1,length-20));
+      ctx.fillStyle=tape.color === 'white' ? '#000' : '#fff'; ctx.font='600 15px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; if (tape.text) ctx.fillText(tape.text,length/2,16,Math.max(1,length-20));
       const png = await new Promise((resolve,reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not render tape.')), 'image/png'));
       const image = await pdf.embedPng(await png.arrayBuffer());
       const angle = Math.atan2(tape.y2-tape.y1,tape.x2-tape.x1), scale=layout.scale;
