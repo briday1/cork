@@ -11,7 +11,7 @@ export function snapshotNotes(notes, elements) {
     const [originX, originY] = style.transformOrigin.split(' ').map(parseFloat);
     const clone = element.cloneNode(true);
     clone.classList.remove('is-selected', 'is-dragging', 'is-resizing');
-    clone.querySelectorAll('.note-actions, .note-resize, .note-resize-height, .note-drag svg').forEach(control => control.remove());
+    clone.querySelectorAll('.note-actions, .note-resize, .note-resize-height, .note-drag svg, .pin-adjust').forEach(control => control.remove());
     const sourceInputs = [...element.querySelectorAll('textarea')];
     clone.querySelectorAll('textarea').forEach((input, index) => {
       const text = document.createElement('div');
@@ -29,7 +29,7 @@ export function snapshotNotes(notes, elements) {
     clone.querySelectorAll('.folder-face, .folder-tab').forEach(part => { part.style.boxShadow = 'none'; });
     const pin = clone.querySelector('.pin');
     if (pin) pin.style.opacity = '1';
-    return {id: note.id, type: note.type, x: note.x, y: note.y, tilt: note.tilt, width, height, originX, originY, element: clone};
+    return {id: note.id, type: note.type, pin:note.pin, x: note.x, y: note.y, tilt: note.tilt, width, height, originX, originY, element: clone};
   });
 }
 
@@ -90,7 +90,7 @@ export async function createBoardPdf(name, notes, connections = [], tapes = [], 
       const [base, highlight] = palette[connection.color] || palette.red;
       page.drawSvgPath(path, {x: 0, y: layout.pageHeight, scale: layout.scale, borderColor: rgb(...base), borderWidth: 2.4});
       page.drawSvgPath(path, {x: 0, y: layout.pageHeight, scale: layout.scale, borderColor: rgb(...highlight), borderWidth: .65, borderDashArray: [1, 2]});
-      pins.set(from.id, curve.from); pins.set(to.id, curve.to);
+      if (!from.pin) pins.set(from.id, curve.from); if (!to.pin) pins.set(to.id, curve.to);
     }
     for (const pin of pins.values()) {
       const x = (pin.x - layout.left) * layout.scale, y = (layout.bottom - pin.y) * layout.scale;

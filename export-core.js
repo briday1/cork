@@ -40,6 +40,7 @@ export function pdfImagePlacement(note, layout) {
 
 export function connectionGeometry(from, to) {
   const pin = note => {
+    if (note.type === 'pin') return {x:note.x + note.width/2, y:note.y + note.height/2};
     const radians = (note.tilt || 0) * Math.PI / 180;
     const pinY = note.type === 'image' ? 7 : note.type === 'folder' ? 45 : 15;
     const delta = pinY - 20;

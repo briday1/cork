@@ -816,6 +816,7 @@ function updateCounts() {
 }
 
 
+const PIN_SHAPES = {classic:'📌', arrow:'➡️', crown:'👑', flower:'🌼', heart:'❤️', bug:'🐞', dog:'🐶', cat:'🐱', egg:'🥚', duck:'🦆'};
 const CARD_COLORS = {white:'#fffef8', yellow:'#fff1af', pink:'#f9d5d7', blue:'#d4e8f4'};
 const STRING_COLORS = {red:['#9e3027','#e06e57'], blue:['#245aa5','#9dc1f0'], yellow:['#b58a08','#ffe07a'], green:['#34764b','#9cdb9b'], black:['#292c30','#a2a4a7'], white:['#c8c8c0','#ffffff']};
 const TAPE_COLORS = {red:'#b5252e', blue:'#2454a3', yellow:'#f1d43b', white:'#f0eee7', black:'#232527'};
@@ -923,7 +924,7 @@ function renderStrings() {
   for (const connection of board.connections) {
     const from = board.notes.find(note => note.id === connection.from), to = board.notes.find(note => note.id === connection.to);
     if (!from || !to) continue;
-    const rect = note => ({...note, width: parseFloat(getComputedStyle(noteElements.get(note.id)).width)});
+    const rect = note => ({...note, width: parseFloat(getComputedStyle(noteElements.get(note.id)).width), height:parseFloat(getComputedStyle(noteElements.get(note.id)).height)});
     const curve = connectionGeometry(rect(from), rect(to));
     const d = `M ${curve.from.x} ${curve.from.y} Q ${curve.control.x} ${curve.control.y} ${curve.to.x} ${curve.to.y}`;
     const group = svg('g', {class: `yarn${selectedStrings.has(connection.id) ? ' is-selected' : ''}`, 'data-connection-id': connection.id});
@@ -958,6 +959,7 @@ function renderStrings() {
     connected.add(from.id); connected.add(to.id); pins.set(from.id, curve.from); pins.set(to.id, curve.to);
   }
   for (const [id, point] of pins) {
+    if (board.notes.find(n => n.id === id)?.pin) continue;
     const pin = svg('g', {class: 'connection-pin', 'data-note-id': id});
     pin.append(svg('circle', {cx: point.x + 1, cy: point.y + 1.5, r: 4.3, fill: '#4c241b', opacity: '.22'}), svg('circle', {cx: point.x, cy: point.y, r: 4, fill: '#aa4a37', stroke: '#763327', 'stroke-width': '.6'}), svg('circle', {cx: point.x - 1, cy: point.y - 1, r: 1.3, fill: '#f0b3a0'}));
     stringLayer.append(pin);
@@ -1095,7 +1097,7 @@ function bringForward(id) {
 }
 
 function autosize(note, element) {
-  if (note.type === 'folder') return;
+  if (note.type === 'folder' || note.type === 'pin') return;
   if (note.type === 'image') {
     const caption = element.querySelector('.polaroid-caption');
     let size = note.style?.body?.size || 16;
@@ -1219,7 +1221,7 @@ function getImageResource(id) {
 
 function wireNoteMovement(element, note, handle) {
   applyNoteStyle(element, note.style, note.type);
-  if (note.type !== 'folder') {
+  if (note.type !== 'folder' && note.type !== 'pin') {
     const shadow = document.createElement('span'); shadow.className = 'paper-shadow';
     const surface = document.createElement('span'); surface.className = 'paper-surface';
     shadow.append(surface); element.append(shadow);
@@ -1282,7 +1284,7 @@ function buildPolaroid(note, index) {
   const actions = document.createElement('div'); actions.className = 'note-actions';
   actions.append(actionButton('Duplicate photo', 'copy', () => duplicateNote(note)), actionButton('Delete photo', 'trash', () => removeNote(note.id)));
   wireNoteMovement(element, note, handle);
-  element.append(handle, photo, caption, actions);
+  element.append(handle, photo, caption, actions); applyPushPin(note,element);
   noteElements.set(note.id, element); world.append(element); autosize(note, element);
   return element;
 }
@@ -1341,12 +1343,40 @@ function buildFolder(note, index) {
   const actions = document.createElement('div'); actions.className = 'note-actions';
   actions.append(actionButton('Duplicate folder', 'copy', () => duplicateNote(note)), actionButton('Delete folder', 'trash', () => removeNote(note.id)));
   wireNoteMovement(element, note, handle);
-  element.append(open, handle, actions); noteElements.set(note.id, element); world.append(element);
+  element.append(open, handle, actions); applyPushPin(note,element); noteElements.set(note.id, element); world.append(element);
   loadFolder(note.folderId);
   return element;
 }
 
+function applyPushPin(note, element) {
+  element.querySelector('.pin-art')?.remove(); element.querySelector('.pin-adjust')?.remove(); element.querySelector('.remove-custom-pin')?.remove();
+  element.classList.toggle('has-custom-pin', Boolean(note.pin));
+  if (!note.pin) return;
+  const art = document.createElement('span'); art.className='pin-art'; art.textContent=PIN_SHAPES[note.pin.shape]; art.setAttribute('aria-hidden','true');
+  art.style.setProperty('--pin-size', `${note.pin.size}px`); art.style.setProperty('--pin-angle', `${note.pin.rotation}deg`);
+  const adjust=document.createElement('button'); adjust.className='pin-adjust'; adjust.type='button'; adjust.title='Drag to resize and rotate pin'; adjust.setAttribute('aria-label','Resize and rotate push pin');
+  adjust.addEventListener('keydown', event => {
+    const direction=arrowDirection(event.key); if (!direction) return;
+    event.preventDefault(); event.stopPropagation(); record();
+    note.pin.size=Math.max(20,Math.min(100,note.pin.size+direction[1]*-2));
+    note.pin.rotation+=direction[0]*5;
+    art.style.setProperty('--pin-size',`${note.pin.size}px`); art.style.setProperty('--pin-angle',`${note.pin.rotation}deg`); saveSoon();
+  });
+  element.append(art, adjust);
+  if (note.type !== 'pin') {
+    const remove = actionButton('Remove decorative pin', 'close', () => { record(); delete note.pin; applyPushPin(note,element); renderStrings(); saveSoon(); });
+    remove.classList.add('remove-custom-pin'); element.querySelector('.note-actions')?.append(remove);
+  }
+}
+function buildPushPin(note,index) {
+  const element=document.createElement('article'); element.className='note pin-item'; element.dataset.noteId=note.id; element.style.left=`${note.x}px`; element.style.top=`${note.y}px`; element.style.zIndex=String(index+1);
+  element.setAttribute('aria-label', `${note.pin.shape} push pin`);
+  const handle=document.createElement('div'); handle.className='note-drag'; handle.tabIndex=0; handle.setAttribute('role','button'); handle.setAttribute('aria-label','Move push pin');
+  const actions=document.createElement('div'); actions.className='note-actions'; actions.append(actionButton('Duplicate pin','copy',()=>duplicateNote(note)),actionButton('Delete pin','trash',()=>removeNote(note.id)));
+  element.append(handle,actions); wireNoteMovement(element,note,handle); applyPushPin(note,element); noteElements.set(note.id,element); world.append(element); return element;
+}
 function buildNote(note, index) {
+  if (note.type === 'pin') return buildPushPin(note,index);
   if (note.type === 'folder') return buildFolder(note, index);
   if (note.type === 'image') return buildPolaroid(note, index);
   const element = document.createElement('article');
@@ -1428,7 +1458,7 @@ function buildNote(note, index) {
     autosize(note, element); saveSoon();
   });
   wireNoteMovement(element, note, handle);
-  element.append(title, content, actions, ...resizeCorners, resizeHeight);
+  element.append(title, content, actions, ...resizeCorners, resizeHeight); applyPushPin(note,element);
   noteElements.set(note.id, element);
   world.append(element);
   autosize(note, element);
@@ -1482,7 +1512,7 @@ function startPlacement(type, category = '', assetId = null, folderName = '') {
   updateHandMode(); setSelected(null);
   placement = {type, category, imageId: type === 'image' ? assetId : null, folderId: type === 'folder' ? assetId : null, folderName};
   viewport.classList.add('is-placing');
-  $('placement-preview').hidden = false;
+  $('placement-preview').hidden = type === 'pin';
   $('placement-preview').classList.toggle('index-preview', type === 'card');
   $('placement-preview').classList.toggle('photo-preview', type === 'image');
   $('placement-preview').classList.toggle('folder-preview', type === 'folder');
@@ -1492,7 +1522,7 @@ function startPlacement(type, category = '', assetId = null, folderName = '') {
   applyNoteStyle($('placement-preview'), board.noteStyle, type);
   $('preview-title').textContent = type === 'card' ? 'Notes' : type === 'image' ? '' : type === 'folder' ? folderName : category;
   $('preview-hint').textContent = matchMedia('(pointer:coarse)').matches ? 'Tap to pin it here' : 'Click to pin it here';
-  $('placement-label').textContent = type === 'card' ? 'Choose a position for the index card' : type === 'image' ? 'Choose a position for the photo' : type === 'folder' ? 'Choose a position for the folder' : `Choose a position for “${category}”`;
+  $('placement-label').textContent = type === 'pin' ? 'Click the board or an item to place the push pin' : type === 'card' ? 'Choose a position for the index card' : type === 'image' ? 'Choose a position for the photo' : type === 'folder' ? 'Choose a position for the folder' : `Choose a position for “${category}”`;
   $('placement-bar').hidden = false;
   if (compactLayout.matches) setSidebar(false);
   renderCategories();
@@ -1513,11 +1543,17 @@ function cancelPlacement() {
   renderCategories();
 }
 
-function placeNote(point) {
+function placeNote(point, targetId = null) {
   if (!placement) return;
   record();
+  if (placement.type === 'pin' && targetId) {
+    const target=board.notes.find(n=>n.id===targetId && n.type !== 'pin');
+    if (target) { target.pin={shape:placement.category,size:32,rotation:0}; applyPushPin(target,noteElements.get(target.id)); cancelPlacement(); setSelected(target.id); renderStrings(); saveNow(); return; }
+  }
+
   const location = screenToWorld(point, board.view);
   const note = {id: crypto.randomUUID(), style: normalizeNoteStyle(board.noteStyle), type: placement.type, category: placement.category, title: placement.type === 'card' ? 'Notes' : placement.category, text: '', x: location.x, y: location.y, tilt: (Math.random() - .5) * 2.4};
+  if (placement.type === 'pin') { note.pin={shape:placement.category,size:48,rotation:0}; note.tilt=0; note.x-=60; note.y-=60; }
   if (placement.type === 'card') note.cardColor = $('card-color').value;
   if (placement.type === 'image') { note.imageId = placement.imageId; note.title = placement.imageName || 'Photo'; }
   if (placement.type === 'folder') { note.folderId = placement.folderId; note.title = placement.folderName; }
@@ -1526,8 +1562,7 @@ function placeNote(point) {
   cancelPlacement(); setSelected(note.id); updateCounts(); saveNow();
   revealOnBoard(note, element); saveSoon();
   const input = element.querySelector('.note-content, .folder-open');
-  if (compactLayout.matches) input.focus({preventScroll: true});
-  else requestAnimationFrame(() => input.focus({preventScroll: true}));
+  if (input) { if (compactLayout.matches) input.focus({preventScroll: true}); else requestAnimationFrame(() => input.focus({preventScroll: true})); }
 }
 
 function removeNote(id) {
@@ -1549,11 +1584,11 @@ function removeElements(items, strings, tapes = new Set()) {
 
 function duplicateNote(note) {
   record();
-  const copy = {...note, id: crypto.randomUUID(), x: note.x + 28, y: note.y + 28};
+  const copy = {...note, ...(note.pin ? {pin:{...note.pin}} : {}), id: crypto.randomUUID(), x: note.x + 28, y: note.y + 28};
   board.notes.push(copy); const element = buildNote(copy, board.notes.length - 1);
   setSelected(copy.id); updateCounts(); renderCategories(); saveNow();
   revealOnBoard(copy, element); saveSoon();
-  element.querySelector('.note-content, .folder-open').focus({preventScroll: true});
+  element.querySelector('.note-content, .folder-open, .note-drag')?.focus({preventScroll: true});
 }
 
 function addBullets(note, content, element) {
@@ -1631,7 +1666,7 @@ function restoreBoxSelection() {
 function cancelGesture() {
   selectionPointerId = null;
   restoreBoxSelection(); clearGestureVisuals();
-  if (gesture?.moved && ['notes', 'tape-end', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type)) saveSoon();
+  if (gesture?.moved && ['notes', 'tape-end', 'pin-transform', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type)) saveSoon();
   for (const id of activePointers.keys()) if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
   activePointers.clear(); gesture = null;
 }
@@ -1680,9 +1715,14 @@ viewport.addEventListener('pointerdown', event => {
       {type:'notes', pointerId:event.pointerId, start:point, items:selectedNotes().map(note => ({note,x:note.x,y:note.y})), tapes:selectedTapePositions(), moved:false};
     viewport.setPointerCapture(event.pointerId); event.preventDefault(); event.stopPropagation(); return;
   }
+  const pinControl=event.target.closest('.pin-adjust');
+  if (pinControl && !pan && !placement) {
+    const element=pinControl.closest('.note'), note=board.notes.find(n=>n.id===element.dataset.noteId);
+    if (note?.pin) { const rect=element.querySelector('.pin-art').getBoundingClientRect(), cx=rect.left+rect.width/2, cy=rect.top+rect.height/2; setSelected(note.id); gesture={type:'pin-transform', pointerId:event.pointerId, start:point, note, element, cx, cy, angle:Math.atan2(event.clientY-cy,event.clientX-cx), distance:Math.max(1,Math.hypot(event.clientX-cx,event.clientY-cy)), size:note.pin.size, rotation:note.pin.rotation, moved:false}; viewport.setPointerCapture(event.pointerId); event.preventDefault(); return; }
+  }
   const controls = event.target.closest('.note-actions, .note-content, .note-title-input');
   if (placement) {
-    gesture = {type: 'place', pointerId: event.pointerId, start: point, moved: false}; viewport.setPointerCapture(event.pointerId); return;
+    gesture = {type: 'place', pointerId: event.pointerId, start: point, targetId:noteElement?.dataset.noteId, moved: false}; viewport.setPointerCapture(event.pointerId); if (placement.type === 'pin') event.preventDefault(); return;
   }
   const note = noteElement && board.notes.find(n => n.id === noteElement.dataset.noteId);
   if (note && !pan) selectionPointerId = note.id;
@@ -1751,7 +1791,7 @@ viewport.addEventListener('pointermove', event => {
   if (!gesture.moved && Math.hypot(dx, dy) < 4) return;
   if (!gesture.moved) {
     gesture.moved = true;
-    if (gesture.type === 'notes' || gesture.type === 'tape-end' || gesture.type === 'resize' || gesture.type === 'resize-height') record();
+    if (gesture.type === 'notes' || gesture.type === 'tape-end' || gesture.type === 'pin-transform' || gesture.type === 'resize' || gesture.type === 'resize-height') record();
     if (gesture.type === 'notes') {
       const moved = new Set(gesture.items.map(item => item.note.id));
       board.notes = [...board.notes.filter(note => !moved.has(note.id)), ...board.notes.filter(note => moved.has(note.id))];
@@ -1783,6 +1823,10 @@ viewport.addEventListener('pointermove', event => {
     for (const item of gesture.tapes || []) { item.tape.x1=item.x1+dx/board.view.zoom; item.tape.y1=item.y1+dy/board.view.zoom; item.tape.x2=item.x2+dx/board.view.zoom; item.tape.y2=item.y2+dy/board.view.zoom; }
     if (gesture.tapes?.length) renderTapes();
     queueStrings();
+  } else if (gesture.type === 'pin-transform') {
+    const a=Math.atan2(event.clientY-gesture.cy,event.clientX-gesture.cx), d=Math.hypot(event.clientX-gesture.cx,event.clientY-gesture.cy);
+    gesture.note.pin.size=Math.max(20,Math.min(100,gesture.size*d/gesture.distance)); gesture.note.pin.rotation=gesture.rotation+(a-gesture.angle)*180/Math.PI;
+    const art=gesture.element.querySelector('.pin-art'); art.style.setProperty('--pin-size',`${gesture.note.pin.size}px`); art.style.setProperty('--pin-angle',`${gesture.note.pin.rotation}deg`);
   } else if (gesture.type === 'tape-end') {
     gesture.tape['x'+gesture.end] = gesture.x + dx/board.view.zoom; gesture.tape['y'+gesture.end] = gesture.y + dy/board.view.zoom; updateTapeGeometry(gesture.element, gesture.tape);
   } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
@@ -1814,7 +1858,7 @@ function endGesture(event) {
   if (gesture.type === 'notes' && !gesture.moved && gesture.deselectOnClick && event.type === 'pointerup') {
     selected.delete(gesture.deselectOnClick); updateSelection();
   }
-  const changed = gesture.moved && ['notes', 'tape-end', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type);
+  const changed = gesture.moved && ['notes', 'tape-end', 'pin-transform', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type);
   if (gesture.type === 'tape') {
     const end = screenToWorld(localPoint(event), board.view), start = gesture.worldStart;
     if (event.type === 'pointerup' && Math.hypot(end.x-start.x, end.y-start.y) >= 20) {
@@ -1822,7 +1866,7 @@ function endGesture(event) {
       board.tapes.push(tape); setSelected(null); selectedTapes.add(tape.id); selectedTape = tape.id; setTapeMode(false, true); updateCounts(); saveNow();
     } else renderTapes();
   }
-  if (gesture.type === 'place' && event.type === 'pointerup') placeNote(localPoint(event));
+  if (gesture.type === 'place' && event.type === 'pointerup') placeNote(localPoint(event), gesture.targetId);
   clearGestureVisuals();
   gesture = null;
   if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
@@ -1831,7 +1875,7 @@ function endGesture(event) {
 window.addEventListener('pointerup', endGesture);
 window.addEventListener('pointercancel', endGesture);
 viewport.addEventListener('pointerleave', () => { if (placement && !gesture) $('placement-preview').hidden = true; });
-viewport.addEventListener('pointerenter', () => { if (placement) $('placement-preview').hidden = false; });
+viewport.addEventListener('pointerenter', () => { if (placement && placement.type !== 'pin') $('placement-preview').hidden = false; });
 viewport.addEventListener('wheel', event => {
   // Leave note text and floating controls alone; the cork itself always zooms.
   if (event.target.closest('.note-content, .note-title-input, .board-footer, .placement-bar, .sidebar-toggle, .mobile-done')) return;
@@ -1883,6 +1927,7 @@ $('download-categories').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 });
 $('random-note').addEventListener('click', randomCategory);
+for (const [shape, glyph] of Object.entries(PIN_SHAPES)) { const button=document.createElement('button'); button.type='button'; button.textContent=glyph; button.title=`${shape} push pin`; button.setAttribute('aria-label',`${shape} push pin`); button.addEventListener('click',()=>startPlacement('pin',shape)); $('pin-options').append(button); }
 $('card-color').addEventListener('change', () => { const cards=selectedNotes().filter(n=>n.type==='card'); if (!cards.length) return; record(); for (const n of cards) {n.cardColor=$('card-color').value; noteElements.get(n.id).style.setProperty('--card-color', CARD_COLORS[n.cardColor]);} saveSoon(); });
 $('string-color').addEventListener('change', () => { const links=board.connections.filter(c=>selectedStrings.has(c.id)); if (!links.length) return; record(); for (const c of links) c.color=$('string-color').value; renderStrings(); saveSoon(); });
 $('add-card').addEventListener('click', () => startPlacement('card'));

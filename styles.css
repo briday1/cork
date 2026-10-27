@@ -870,3 +870,27 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .note.index-card { --paper-face:var(--card-color,#fffef8); }
 .yarn-base { stroke:var(--yarn-color,#9e3027); }
 .yarn-twist { stroke:var(--yarn-highlight,#e06e57); }
+
+.pin-supply { padding:0 0 10px; font-size:11px; color:var(--rail-muted); }
+.pin-supply summary { cursor:pointer; color:var(--rail-ink); padding:5px 0; }
+.pin-options { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; }
+.pin-options button { font-size:22px; min-height:38px; border:1px solid var(--rail-rule); border-radius:4px; }
+.pin-options button:hover { background:var(--rail-hover); }
+.pin-supply p { font-size:10px; line-height:1.4; }
+.note.pin-item { width:120px; height:120px; min-height:120px; padding:0; background:none; border:0; box-shadow:none; transform:none; }
+.note.pin-item .note-drag { position:absolute; inset:0; height:auto; margin:0; cursor:grab; }
+.pin-art { position:absolute; left:50%; top:50%; display:grid; place-items:center; width:var(--pin-size,48px); height:var(--pin-size,48px); font-size:var(--pin-size,48px); line-height:1; transform:translate(-50%,-50%) rotate(var(--pin-angle,0deg)); filter:drop-shadow(1px 2px 2px #30201566); pointer-events:none; }
+.note:not(.pin-item) .pin-art { top:15px; z-index:5; }
+.note.polaroid .pin-art { top:7px; }
+.note.manila-folder .pin-art { top:45px; }
+.pin-adjust { position:absolute; left:calc(50% + 25px); top:calc(50% + 25px); width:20px; height:20px; border:2px solid #285d67; border-radius:50%; background:#fff; cursor:nwse-resize; z-index:12; display:none; touch-action:none; }
+.note:not(.pin-item) .pin-adjust { top:25px; }
+.note.manila-folder .pin-adjust { top:55px; }
+.note.polaroid .pin-adjust { top:17px; }
+.note.is-selected .pin-adjust { display:block; }
+.note.has-custom-pin .pin { display:none; }
+.note.pin-item .note-actions { z-index:15; }
+.note .pin { width:11px; height:11px; background:radial-gradient(circle at 35% 25%,#ffe4d9 0 13%,#d75e48 28%,#8c2d20 72%); box-shadow:1px 3px 3px #30201577,inset -1px -1px 2px #57181088; opacity:1; }
+.note:hover .pin,.note:focus-within .pin,.note-drag .pin { opacity:1; }
+
+.note.polaroid .pin, .note.manila-folder .pin { width:11px; height:11px; background:radial-gradient(circle at 35% 25%,#ffe4d9 0 13%,#d75e48 28%,#8c2d20 72%); }

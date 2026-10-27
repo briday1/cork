@@ -137,12 +137,15 @@ export function validateBoard(data) {
   const ids = new Set();
   const finite = n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1e7;
   const notes = data.notes.map(n => {
-    if (!n || typeof n.id !== 'string' || !n.id || n.id.length > 100 || ids.has(n.id) || !['note', 'card', 'image', 'folder'].includes(n.type) || !finite(n.x) || !finite(n.y) || typeof n.text !== 'string' || n.text.length > 100000 || typeof n.category !== 'string' || n.category.length > 10000 || typeof n.title !== 'string' || n.title.length > 10000) throw new Error('This board contains an invalid note. Nothing was changed.');
+    if (!n || typeof n.id !== 'string' || !n.id || n.id.length > 100 || ids.has(n.id) || !['note', 'card', 'image', 'folder', 'pin'].includes(n.type) || !finite(n.x) || !finite(n.y) || typeof n.text !== 'string' || n.text.length > 100000 || typeof n.category !== 'string' || n.category.length > 10000 || typeof n.title !== 'string' || n.title.length > 10000) throw new Error('This board contains an invalid note. Nothing was changed.');
     if (n.type === 'image' && (typeof n.imageId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.imageId) || n.text.length > 120)) throw new Error('This board contains an invalid Polaroid. Captions can contain up to 120 characters. Nothing was changed.');
     if (n.type === 'folder' && (typeof n.folderId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(n.folderId) || !n.title || n.title.length > 255)) throw new Error('This board contains an invalid folder link. Nothing was changed.');
+    const pinShapes = ['classic','arrow','crown','flower','heart','bug','dog','cat','egg','duck'];
+    if (n.pin !== undefined && (!n.pin || !pinShapes.includes(n.pin.shape) || !finite(n.pin.size) || n.pin.size < 20 || n.pin.size > 100 || !finite(n.pin.rotation))) throw new Error('This board contains an invalid push pin. Nothing was changed.');
+    if (n.type === 'pin' && !n.pin) throw new Error('This board contains an invalid push pin. Nothing was changed.');
     ids.add(n.id);
     const style = normalizeNoteStyle(n.style);
-    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(Object.keys(style).length ? {style} : {}), ...(n.type === 'card' && ['white','yellow','pink','blue'].includes(n.cardColor) ? {cardColor:n.cardColor} : {}), ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
+    return {id: n.id, type: n.type, category: n.category, title: n.title, text: n.text, x: n.x, y: n.y, tilt: finite(n.tilt) ? Math.max(-3, Math.min(3, n.tilt)) : 0, ...(Object.keys(style).length ? {style} : {}), ...(n.pin ? {pin:{shape:n.pin.shape,size:n.pin.size,rotation:n.pin.rotation}} : {}), ...(n.type === 'card' && ['white','yellow','pink','blue'].includes(n.cardColor) ? {cardColor:n.cardColor} : {}), ...(n.type === 'image' ? {imageId: n.imageId} : n.type === 'folder' ? {folderId: n.folderId} : {
       ...(finite(n.width) ? {width: Math.max(190, Math.min(800, n.width))} : {}),
       ...(finite(n.height) ? {height: Math.max(120, Math.min(2000, n.height))} : {}),
     })};
