@@ -47,3 +47,8 @@ test('all arrow pin colors round-trip without losing existing arrows', () => {
     assert.equal(validateBoard(board).notes[0].pin.shape,shape);
   }
 });
+
+test('the ordinary board pin is preserved when saving and reopening', () => {
+  const board=blankBoard(); board.notes.push({id:'ordinary',type:'pin',category:'board-pin',title:'board-pin',text:'',x:0,y:0,tilt:0,pin:{shape:'board-pin',size:48,rotation:0}});
+  assert.equal(validateBoard(JSON.parse(JSON.stringify(board))).notes[0].pin.shape,'board-pin');
+});
