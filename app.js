@@ -1125,7 +1125,25 @@ function refreshSupplyControls() {
   for (const button of $('pin-options').querySelectorAll('button')) button.setAttribute('aria-pressed', String(Boolean(selectedPin && context === 'pin-edit' && button.dataset.shape === pinConfig.shape)));
 }
 
+// Keep navigation advice out of the way while the board is in use.
+const boardTip = $('board-tip');
+boardTip.style.transition = 'opacity 300ms ease';
+let boardTipIdle = true, boardTipTimer;
+function refreshBoardTipVisibility() {
+  boardTip.style.opacity = (boardTipIdle || stringMode || selectMode) ? '1' : '0';
+}
+function noteBoardActivity() {
+  boardTipIdle = false;
+  refreshBoardTipVisibility();
+  clearTimeout(boardTipTimer);
+  boardTipTimer = setTimeout(() => { boardTipIdle = true; refreshBoardTipVisibility(); }, 15000);
+}
+for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'input']) {
+  document.addEventListener(type, noteBoardActivity, {passive: true});
+}
+
 function updateBoardTip() {
+  refreshBoardTipVisibility();
   $('board-tip').hidden = !board.notes.length || !$('selection-tools').hidden;
   $('board-tip').textContent = stringMode ? (stringStart ? 'Select a different item.' : 'Select the first item.') : selectMode ? 'Click items or drag a box to select. Drag selected items to move them.' : 'Scroll to zoom. Drag the board to pan.';
 }
