@@ -4,7 +4,7 @@ import {connectionGeometry} from './export-core.js';
 import {readCategoryFile, readCategoryCache, writeCategoryCache, readLinkedCategories, getCategoryHandle, putCategoryHandle, validateCategoryText, categoriesChanged} from './category-file.js';
 import {ACCOUNT_CATEGORY_NAME, categoryProfileKey, readCategoryAccount, syncCategoryProfile} from './category-profile.js';
 import {DriveAutoSaveQueue} from './drive-autosave.js';
-import {selectionBounds, notesInSelection} from './selection-core.js';
+import {selectionBounds, notesInSelection, tapesInSelection} from './selection-core.js';
 import {boardKeys, readWorkspace, writeWorkspace, readWorkspaceBoard, boardStamp, duplicateBoardSnapshot} from './workspace.js';
 import {readBoardFile, writeBoardFile} from './board-file.js';
 import {resizePaper} from './paper-core.js';
@@ -39,6 +39,7 @@ let categoryRevision = 0, categoryBusy = false, categoriesReady = false, lastCat
 let categoryAccount = null, categoryConflict = false, categorySyncError = '', categorySaveTimer, categoryEditTimer, categoryEditKey, categoryEditText;
 const selected = new Set();
 const selectedStrings = new Set();
+const selectedTapes = new Set();
 let placement = null;
 let pointer = null;
 let handMode = false;
@@ -235,7 +236,7 @@ function switchBoard(id) {
   storageKey = boardKeys(appKey, id).board;
   savingBlocked = activeSession.blocked;
   undoStack = activeSession.undo; redoStack = activeSession.redo;
-  selected.clear(); selectedStrings.clear(); activePointers.clear();
+  selected.clear(); selectedStrings.clear(); selectedTapes.clear(); activePointers.clear();
   pointer = null; handMode = false; spaceHeld = false; updateHandMode();
   $('category-search').value = '';
   renderBoard(); updateHistory(); renderBoardTabs(); rememberWorkspace();
@@ -832,13 +833,20 @@ function renderTapes(preview = null) {
   const svg = (tag, attrs) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k,v] of Object.entries(attrs)) el.setAttribute(k,v); return el; };
   for (const tape of [...(board.tapes || []), ...(preview ? [preview] : [])]) {
     const length = Math.hypot(tape.x2-tape.x1,tape.y2-tape.y1), angle = Math.atan2(tape.y2-tape.y1,tape.x2-tape.x1)*180/Math.PI;
-    const group = svg('g', {class:`tape-piece${selectedTape === tape.id ? ' is-selected' : ''}`, transform:`translate(${tape.x1} ${tape.y1}) rotate(${angle})`, tabindex:'0', role:'button', 'aria-label':'Tape. Select to edit or delete.'});
+    const group = svg('g', {class:`tape-piece${selectedTapes.has(tape.id) ? ' is-selected' : ''}`, transform:`translate(${tape.x1} ${tape.y1}) rotate(${angle})`, 'data-tape-id':tape.id, tabindex:'0', role:'button', 'aria-label':'Tape. Select to edit or delete.'});
     const seed = [...tape.id].reduce((n,c) => (n*31+c.charCodeAt(0))>>>0, 7);
     const a = 2 + seed%5, b = 2 + (seed>>>4)%5;
     group.append(svg('path', {d:`M ${a} -16 L ${length-b} -16 L ${length-2} -10 L ${length-b} -5 L ${length-1} 0 L ${length-b} 6 L ${length-3} 11 L ${length-b} 16 L ${a} 16 L 2 11 L ${a} 6 L 1 0 L ${a} -5 L 2 -11 Z`, fill:TAPE_COLORS[tape.color], stroke:'#000', 'stroke-opacity':'.16', 'stroke-width':'1'}));
     const text = svg('text', {x:length/2, y:0, 'text-anchor':'middle', 'dominant-baseline':'central', fill:tape.color === 'white' ? '#000' : '#fff', 'font-family':'sans-serif', 'font-size':'15', 'font-weight':'600', 'pointer-events':'none', textLength:Math.max(1, length-20), lengthAdjust:'spacingAndGlyphs'});
     if (tape.text) { text.removeAttribute('textLength'); if (tape.text.length*9 > length-20) text.setAttribute('textLength', Math.max(1,length-20)); text.textContent=tape.text; group.append(text); }
-    if (tape.id !== 'preview') { group.addEventListener('click', e => { e.stopPropagation(); if (handMode || spaceHeld) return; setSelected(null); selectedTape=tape.id; setTapeMode(false,true); }); group.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectedTape=tape.id; setTapeMode(false,true); } }); }
+    if (tape.id !== 'preview') {
+      if (selectedTapes.has(tape.id)) for (const [end, x] of [['1',0], ['2',length]]) {
+        const handle = svg('circle', {class:'tape-handle', cx:x, cy:0, r:8, 'data-end':end, tabindex:'0', role:'button', 'aria-label':`Move tape end ${end}. Drag or use arrow keys.`});
+        handle.addEventListener('keydown', e => { const d=arrowDirection(e.key); if (!d) return; e.preventDefault(); e.stopPropagation(); record(); const step=e.shiftKey?1:10; tape['x'+end]+=d[0]*step; tape['y'+end]+=d[1]*step; renderTapes(); saveSoon(); tapeLayer.querySelector(`[data-tape-id="${tape.id}"] [data-end="${end}"]`)?.focus(); });
+        group.append(handle);
+      }
+      group.addEventListener('keydown', e => { if ((e.key==='Enter' || e.key===' ') && e.target===group) { e.preventDefault(); e.stopPropagation(); if (!selectMode && !e.shiftKey) setSelected(null); selectedTapes.add(tape.id); selectedTape=tape.id; setTapeMode(false,true); updateSelection(); tapeLayer.querySelector(`[data-tape-id="${tape.id}"]`)?.focus(); } });
+    }
     tapeLayer.append(group);
   }
 }
@@ -847,7 +855,7 @@ $('tape-done').addEventListener('click', () => setTapeMode(false));
 $('tape-color').addEventListener('change', () => { const tape=board.tapes.find(t => t.id===selectedTape); if (tape) { record(); tape.color=$('tape-color').value; renderTapes(); saveSoon(); } });
 $('tape-text').addEventListener('focus', record);
 $('tape-text').addEventListener('input', () => { const tape=board.tapes.find(t => t.id===selectedTape); if (tape) { tape.text=$('tape-text').value; renderTapes(); saveSoon(); } });
-$('tape-delete').addEventListener('click', () => { if (!selectedTape) return; record(); board.tapes=board.tapes.filter(t => t.id!==selectedTape); setTapeMode(false); updateCounts(); saveNow(); });
+$('tape-delete').addEventListener('click', () => { if (!selectedTape) return; removeElements(new Set(), new Set(), new Set([selectedTape])); });
 
 function queueStrings() {
   cancelAnimationFrame(stringFrame);
@@ -988,7 +996,8 @@ function localPoint(event) {
 }
 
 function setSelected(ids) {
-  selected.clear(); selectedStrings.clear();
+  selected.clear(); selectedStrings.clear(); selectedTapes.clear(); selectedTape = null;
+  if (tapeLayer?.isConnected) setTapeMode(false);
   for (const id of typeof ids === 'string' ? [ids] : ids || []) selected.add(id);
   updateSelection();
 }
@@ -1008,7 +1017,9 @@ function updateSelection() {
     yarn.classList.toggle('is-selected', active);
     yarn.querySelector('.connection-hit').setAttribute('aria-pressed', String(active));
   }
-  const count = selected.size + selectedStrings.size;
+  const validTapes = new Set(board.tapes.map(t => t.id));
+  for (const id of selectedTapes) if (!validTapes.has(id)) selectedTapes.delete(id);
+  const count = selected.size + selectedStrings.size + selectedTapes.size;
   viewport.classList.toggle('has-multi-selection', count > 1);
   $('selection-tools').hidden = !count;
   const signature = [...selected].sort().join('|');
@@ -1039,6 +1050,9 @@ function setSelectMode(active) {
 
 function selectedNotes() { return board.notes.filter(note => selected.has(note.id)); }
 
+function arrowDirection(key) { return {ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1]}[key]; }
+function selectedTapePositions() { return board.tapes.filter(t => selectedTapes.has(t.id)).map(tape => ({tape, x1:tape.x1, y1:tape.y1, x2:tape.x2, y2:tape.y2})); }
+function moveSelectedTapes(dx,dy) { for (const t of board.tapes) if (selectedTapes.has(t.id)) { t.x1+=dx; t.y1+=dy; t.x2+=dx; t.y2+=dy; } renderTapes(); }
 function moveNotes(notes, dx, dy) {
   for (const note of notes) {
     note.x += dx; note.y += dy;
@@ -1210,7 +1224,7 @@ function wireNoteMovement(element, note, handle) {
     event.preventDefault(); record();
     if (!selected.has(note.id)) setSelected(note.id);
     const step = event.shiftKey ? 1 : 10;
-    moveNotes(selectedNotes(), direction[0] * step, direction[1] * step); saveSoon();
+    moveNotes(selectedNotes(), direction[0] * step, direction[1] * step); moveSelectedTapes(direction[0] * step, direction[1] * step); event.stopPropagation(); saveSoon();
   });
   element.addEventListener('focusin', () => {
     if (!compactLayout.matches && !selectMode) { revealOnBoard(note, element); saveSoon(); }
@@ -1495,16 +1509,16 @@ function removeNote(id) {
 }
 
 function removeSelection() {
-  if (selected.size || selectedStrings.size) removeElements(new Set(selected), new Set(selectedStrings));
+  if (selected.size || selectedStrings.size || selectedTapes.size) removeElements(new Set(selected), new Set(selectedStrings), new Set(selectedTapes));
 }
 
-function removeElements(items, strings) {
-  record(); board.notes = board.notes.filter(note => !items.has(note.id));
+function removeElements(items, strings, tapes = new Set()) {
+  record(); board.tapes = board.tapes.filter(t => !tapes.has(t.id)); board.notes = board.notes.filter(note => !items.has(note.id));
   board.connections = board.connections.filter(link => !items.has(link.from) && !items.has(link.to) && !strings.has(link.id));
   for (const id of items) { noteElements.get(id)?.remove(); noteElements.delete(id); }
   setSelected(null);
-  renderStrings(); renderCategories(); updateCounts(); saveNow();
-  toast(items.size + strings.size === 1 ? 'Item removed.' : `${items.size + strings.size} items removed.`, true);
+  renderStrings(); renderTapes(); renderCategories(); updateCounts(); saveNow();
+  toast(items.size + strings.size + tapes.size === 1 ? 'Item removed.' : `${items.size + strings.size + tapes.size} items removed.`, true);
 }
 
 function duplicateNote(note) {
@@ -1584,13 +1598,14 @@ function restoreBoxSelection() {
   selected.clear(); selectedStrings.clear();
   for (const id of gesture.originalItems) selected.add(id);
   for (const id of gesture.originalStrings) selectedStrings.add(id);
+  selectedTapes.clear(); for (const id of gesture.originalTapes) selectedTapes.add(id); renderTapes();
   updateSelection();
 }
 
 function cancelGesture() {
   selectionPointerId = null;
   restoreBoxSelection(); clearGestureVisuals();
-  if (gesture?.moved && ['notes', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type)) saveSoon();
+  if (gesture?.moved && ['notes', 'tape-end', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type)) saveSoon();
   for (const id of activePointers.keys()) if (viewport.hasPointerCapture(id)) viewport.releasePointerCapture(id);
   activePointers.clear(); gesture = null;
 }
@@ -1605,7 +1620,7 @@ viewport.addEventListener('pointerdown', event => {
     gesture = {type: 'tape', pointerId: event.pointerId, start: point, worldStart: start, moved: false};
     viewport.setPointerCapture(event.pointerId); event.preventDefault(); event.stopPropagation(); return;
   }
-  if (event.target.closest('.tape-piece') && !handMode && !spaceHeld) return;
+
   const noteElement = event.target.closest('.note');
   if (stringMode && noteElement) { event.preventDefault(); event.stopPropagation(); return; }
   const pan = handMode || spaceHeld || event.button === 1;
@@ -1624,6 +1639,21 @@ viewport.addEventListener('pointerdown', event => {
     event.preventDefault(); return;
   }
   const point = localPoint(event);
+  const tapeElement = event.target.closest('.tape-piece');
+  const tape = tapeElement && board.tapes.find(t => t.id === tapeElement.dataset.tapeId);
+  if (tape && !pan && !placement && !stringMode) {
+    const end = event.target.closest('.tape-handle')?.dataset.end;
+    if (!end) {
+      if (event.shiftKey) { if (selectedTapes.has(tape.id)) selectedTapes.delete(tape.id); else selectedTapes.add(tape.id); }
+      else { if (!selectedTapes.has(tape.id) && !selectMode) setSelected(null); selectedTapes.add(tape.id); }
+      selectedTape = selectedTapes.has(tape.id) ? tape.id : null;
+      setTapeMode(false, Boolean(selectedTape)); updateSelection();
+    }
+    document.activeElement?.blur(); viewport.focus({preventScroll:true});
+    gesture = end ? {type:'tape-end', pointerId:event.pointerId, start:point, tape, end, x:tape['x'+end], y:tape['y'+end], moved:false} :
+      {type:'notes', pointerId:event.pointerId, start:point, items:selectedNotes().map(note => ({note,x:note.x,y:note.y})), tapes:selectedTapePositions(), moved:false};
+    viewport.setPointerCapture(event.pointerId); event.preventDefault(); event.stopPropagation(); return;
+  }
   const controls = event.target.closest('.note-actions, .note-content, .note-title-input');
   if (placement) {
     gesture = {type: 'place', pointerId: event.pointerId, start: point, moved: false}; viewport.setPointerCapture(event.pointerId); return;
@@ -1640,7 +1670,7 @@ viewport.addEventListener('pointerdown', event => {
       gesture = {type: 'selection-click', pointerId: event.pointerId, start: point, moved: false};
     } else {
       selected.add(note.id); updateSelection();
-      gesture = {type: 'notes', pointerId: event.pointerId, start: point, items: selectedNotes().map(note => ({note, x: note.x, y: note.y})), deselectOnClick: alreadySelected ? note.id : null, moved: false};
+      gesture = {type: 'notes', pointerId: event.pointerId, start: point, items: selectedNotes().map(note => ({note, x: note.x, y: note.y})), tapes: selectedTapePositions(), deselectOnClick: alreadySelected ? note.id : null, moved: false};
     }
   } else if (note && !pan) {
     if (event.target.closest('.note-actions')) return;
@@ -1654,15 +1684,16 @@ viewport.addEventListener('pointerdown', event => {
     } else {
       if (!event.target.closest('.note-drag') && selected.size < 2) return;
       document.activeElement?.blur(); viewport.focus({preventScroll: true});
-      gesture = {type: 'notes', pointerId: event.pointerId, start: point, items: selectedNotes().map(note => ({note, x: note.x, y: note.y})), moved: false};
+      gesture = {type: 'notes', pointerId: event.pointerId, start: point, items: selectedNotes().map(note => ({note, x: note.x, y: note.y})), tapes: selectedTapePositions(), moved: false};
     }
     event.preventDefault();
   } else if (!pan && (selectMode || event.shiftKey)) {
     document.activeElement?.blur(); viewport.focus({preventScroll: true});
-    const originalItems = new Set(selected), originalStrings = new Set(selectedStrings);
+    const originalItems = new Set(selected), originalStrings = new Set(selectedStrings), originalTapes = new Set(selectedTapes);
+    const baseTapes = new Set(event.shiftKey ? selectedTapes : []);
     const base = new Set(event.shiftKey ? selected : []);
     if (!event.shiftKey) setSelected(null);
-    gesture = {type: 'marquee', pointerId: event.pointerId, start: point, base, originalItems, originalStrings, moved: false,
+    gesture = {type: 'marquee', pointerId: event.pointerId, start: point, base, baseTapes, originalItems, originalStrings, originalTapes, moved: false,
       bounds: board.notes.map(note => ({...note, width: noteElements.get(note.id).offsetWidth, height: noteElements.get(note.id).offsetHeight}))};
     viewport.classList.add('is-box-selecting');
     event.preventDefault();
@@ -1694,7 +1725,7 @@ viewport.addEventListener('pointermove', event => {
   if (!gesture.moved && Math.hypot(dx, dy) < 4) return;
   if (!gesture.moved) {
     gesture.moved = true;
-    if (gesture.type === 'notes' || gesture.type === 'resize' || gesture.type === 'resize-height') record();
+    if (gesture.type === 'notes' || gesture.type === 'tape-end' || gesture.type === 'resize' || gesture.type === 'resize-height') record();
     if (gesture.type === 'notes') {
       const moved = new Set(gesture.items.map(item => item.note.id));
       board.notes = [...board.notes.filter(note => !moved.has(note.id)), ...board.notes.filter(note => moved.has(note.id))];
@@ -1712,6 +1743,7 @@ viewport.addEventListener('pointermove', event => {
     const hits = notesInSelection(gesture.bounds, selectionBounds(screenToWorld(gesture.start, board.view), screenToWorld(point, board.view)));
     selected.clear();
     for (const id of [...gesture.base, ...hits]) selected.add(id);
+    selectedTapes.clear(); for (const id of [...gesture.baseTapes, ...tapesInSelection(board.tapes, selectionBounds(screenToWorld(gesture.start, board.view), screenToWorld(point, board.view)))]) selectedTapes.add(id); renderTapes();
     updateSelection();
   } else if (gesture.type === 'pan') {
     board.view.x = gesture.view.x + dx; board.view.y = gesture.view.y + dy;
@@ -1722,7 +1754,11 @@ viewport.addEventListener('pointermove', event => {
       const element = noteElements.get(item.note.id);
       element.style.left = `${item.note.x}px`; element.style.top = `${item.note.y}px`; element.classList.add('is-dragging');
     }
+    for (const item of gesture.tapes || []) { item.tape.x1=item.x1+dx/board.view.zoom; item.tape.y1=item.y1+dy/board.view.zoom; item.tape.x2=item.x2+dx/board.view.zoom; item.tape.y2=item.y2+dy/board.view.zoom; }
+    if (gesture.tapes?.length) renderTapes();
     queueStrings();
+  } else if (gesture.type === 'tape-end') {
+    gesture.tape['x'+gesture.end] = gesture.x + dx/board.view.zoom; gesture.tape['y'+gesture.end] = gesture.y + dy/board.view.zoom; renderTapes();
   } else if (gesture.type === 'resize' || gesture.type === 'resize-height') {
     if (gesture.type === 'resize') {
       Object.assign(gesture.note, resizePaper(gesture, dx / board.view.zoom, dy / board.view.zoom, gesture.side));
@@ -1752,12 +1788,12 @@ function endGesture(event) {
   if (gesture.type === 'notes' && !gesture.moved && gesture.deselectOnClick && event.type === 'pointerup') {
     selected.delete(gesture.deselectOnClick); updateSelection();
   }
-  const changed = gesture.moved && ['notes', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type);
+  const changed = gesture.moved && ['notes', 'tape-end', 'resize', 'resize-height', 'pan', 'pinch'].includes(gesture.type);
   if (gesture.type === 'tape') {
     const end = screenToWorld(localPoint(event), board.view), start = gesture.worldStart;
     if (event.type === 'pointerup' && Math.hypot(end.x-start.x, end.y-start.y) >= 20) {
       record(); const tape = {id:crypto.randomUUID(), color:$('tape-color').value, text:'', x1:start.x, y1:start.y, x2:end.x, y2:end.y};
-      board.tapes.push(tape); selectedTape = tape.id; setTapeMode(false, true); updateCounts(); saveNow();
+      board.tapes.push(tape); setSelected(null); selectedTapes.add(tape.id); selectedTape = tape.id; setTapeMode(false, true); updateCounts(); saveNow();
     } else renderTapes();
   }
   if (gesture.type === 'place' && event.type === 'pointerup') placeNote(localPoint(event));
@@ -2329,16 +2365,18 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { setTapeMode(false); cancelGesture(); setStringMode(false); setSelectMode(false); setSelected(null); cancelPlacement(); closeMenu(); closeAllBoards(); $('text-settings').open = false; $('appearance-settings').open = false; if (compactLayout.matches) setSidebar(false); return; }
   if (stringMode && event.key === 'Enter' && event.target.closest('.note')) { event.preventDefault(); chooseStringItem(event.target.closest('.note').dataset.noteId); return; }
   if (editing || document.querySelector('dialog[open]')) return;
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); return; }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(board.notes.map(note => note.id)); for (const tape of board.tapes) selectedTapes.add(tape.id); renderTapes(); updateSelection(); return; }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); historyStep(event.shiftKey ? redoStack : undoStack, event.shiftKey ? undoStack : redoStack); return; }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); historyStep(redoStack, undoStack); return; }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const direction = arrowDirection(event.key);
+  if (direction && selectedTapes.size) { event.preventDefault(); record(); const step=event.shiftKey?1:10; moveNotes(selectedNotes(),direction[0]*step,direction[1]*step); moveSelectedTapes(direction[0]*step,direction[1]*step); saveSoon(); return; }
   if (event.key.toLowerCase() === 'r') { event.preventDefault(); randomCategory(); }
   else if (event.key.toLowerCase() === 'v') { event.preventDefault(); cancelGesture(); setSelectMode(!selectMode); }
   else if (event.key.toLowerCase() === 'i') { event.preventDefault(); startPlacement('card'); }
   else if (event.key === '/') { event.preventDefault(); setSidebar(true); $('category-search').focus(); }
   else if (event.key === ' ') { event.preventDefault(); spaceHeld = true; updateHandMode(); }
-  else if ((event.key === 'Delete' || event.key === 'Backspace') && (selected.size || selectedStrings.size)) { event.preventDefault(); removeSelection(); }
+  else if ((event.key === 'Delete' || event.key === 'Backspace') && (selected.size || selectedStrings.size || selectedTapes.size)) { event.preventDefault(); removeSelection(); }
   else if (event.key === 'Enter' && placement) { event.preventDefault(); placeNote(pointer || {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2}); }
 });
 document.addEventListener('keyup', event => { if (event.key === ' ') { spaceHeld = false; updateHandMode(); } });

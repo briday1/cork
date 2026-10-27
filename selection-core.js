@@ -21,3 +21,11 @@ export function notesInSelection(notes, bounds) {
     });
   }).map(note => note.id);
 }
+
+// Treat tape as a rotated strip, not its axis-aligned bounding box.
+export function tapesInSelection(tapes, bounds) {
+  return notesInSelection(tapes.map(t => {
+    const angle = Math.atan2(t.y2-t.y1, t.x2-t.x1), length = Math.hypot(t.x2-t.x1, t.y2-t.y1);
+    return {id:t.id, x:t.x1+16*Math.sin(angle), y:t.y1-16*Math.cos(angle), width:length, height:32, tilt:angle*180/Math.PI, originX:0, originY:0};
+  }), bounds);
+}

@@ -859,3 +859,7 @@ body[data-theme^="paper-"] .board-tip { color:#4d564e; }
 .board-file-actions button:disabled { opacity:.45; }
 .board-file-actions svg { width:14px; height:14px; }
 @media(pointer:coarse) { .board-file-actions button { min-height:44px; } }
+
+.tape-handle { fill:#fff; stroke:#176b76; stroke-width:2; cursor:crosshair; pointer-events:all; }
+.tape-handle:focus-visible { stroke:#003e49; stroke-width:3; }
+.tape-piece.is-selected { cursor:move; }

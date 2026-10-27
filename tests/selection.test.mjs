@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {selectionBounds, notesInSelection} from '../selection-core.js';
+import {selectionBounds, notesInSelection, tapesInSelection} from '../selection-core.js';
 import {screenToWorld} from '../board-core.js';
 
 test('selection boxes work in every drag direction', () => {
@@ -36,4 +36,12 @@ test('selection after panning and zooming uses world coordinates and full resize
   const paper = [{id: 'tall', x: -600, y: 0, width: 248, height: 1100, tilt: -2}];
   assert.deepEqual(notesInSelection(paper, bounds), ['tall']);
   assert.deepEqual(notesInSelection([], bounds), []);
+});
+
+
+test('box selection finds tape strips including angled ones without selecting empty corners', () => {
+  const tapes = [{id:'diagonal', x1:0, y1:0, x2:200, y2:200}, {id:'horizontal', x1:300, y1:100, x2:500, y2:100}];
+  assert.deepEqual(tapesInSelection(tapes, {left:90, top:90, right:110, bottom:110}), ['diagonal']);
+  assert.deepEqual(tapesInSelection(tapes, {left:0, top:180, right:10, bottom:190}), []);
+  assert.deepEqual(tapesInSelection(tapes, {left:350, top:90, right:360, bottom:110}), ['horizontal']);
 });
