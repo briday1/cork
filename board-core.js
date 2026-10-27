@@ -7,6 +7,14 @@ export const PALETTES = {
   earth: [[48, 47, 76], [29, 42, 76], [14, 38, 79], [78, 28, 74], [135, 21, 77]],
   viridis: [],
   cividis: [],
+  sunset: [[42,84,81],[16,76,83],[345,59,85],[295,45,86],[245,42,84]],
+  ocean: [[182,43,81],[195,58,83],[213,59,85],[236,48,87],[260,38,87]],
+  garden: [[75,48,82],[107,39,80],[145,38,81],[173,40,82],[196,45,84]],
+  berry: [[345,55,84],[322,46,84],[295,42,85],[270,42,85],[240,40,85]],
+  'mix-bright': [[48,80,79],[212,65,82],[350,64,83],[142,45,78],[278,50,84],[24,80,80],[184,50,79],[325,53,83],[82,48,78],[240,45,85],[12,67,82],[162,40,79]],
+  'mix-pastel': [[42,68,88],[215,55,88],[340,55,89],[150,37,87],[275,40,89],[20,64,88],[185,41,87],[315,45,89],[78,41,86],[245,38,89]],
+  'mix-earth': [[40,50,78],[196,34,77],[8,43,79],[110,28,76],[275,25,81],[27,48,77],[160,27,75],[332,33,80],[73,32,75],[225,25,80]],
+  'mix-vivid': [[52,89,76],[218,70,79],[355,70,80],[133,51,76],[280,55,82],[28,88,77],[185,58,76],[320,60,80],[78,56,76],[247,50,82]],
 };
 
 export function parseCategories(text) {
@@ -71,6 +79,14 @@ export function categoryColor(name, categories, palette = 'hsv') {
     return `rgb(${a.map((v, i) => Math.round((v + (b[i] - v) * (p % 1)) * .42 + [255, 253, 243][i] * .58)).join(' ')})`;
   }
   const stops = PALETTES[palette];
+  if (palette.startsWith('mix-')) {
+    // Keep neighboring categories distinct and colors stable across redraws.
+    const i = index < 0 ? hash : index;
+    const [h, saturation, lightness] = stops[i % stops.length];
+    const round = Math.floor(i / stops.length);
+    const shift = round === 0 ? 0 : ((round % 5) - 2) * 2;
+    return `hsl(${h} ${saturation}% ${Math.max(69, Math.min(92, lightness + shift))}%)`;
+  }
   const position = t * (stops.length - 1);
   const a = stops[Math.floor(position)];
   const b = stops[Math.min(Math.ceil(position), stops.length - 1)];

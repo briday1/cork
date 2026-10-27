@@ -150,3 +150,14 @@ test('bad imports are rejected without silently dropping notes', () => {
   const wrong = sample(); wrong.notes[0].text = {html: 'no'};
   assert.throws(() => validateBoard(wrong));
 });
+
+test('mixed palettes keep adjacent categories distinct and survive board validation', () => {
+  const categories = Array.from({length:20}, (_, i) => `Category ${i}`);
+  for (const palette of ['mix-bright', 'mix-pastel', 'mix-earth', 'mix-vivid']) {
+    const colors = categories.map(name => categoryColor(name, categories, palette));
+    assert.equal(new Set(colors.slice(0, 10)).size, 10);
+    for (let i = 1; i < colors.length; i++) assert.notEqual(colors[i], colors[i-1]);
+    assert.deepEqual(categories.map(name => categoryColor(name, categories, palette)), colors);
+    assert.equal(validateBoard({...blankBoard(), palette}).palette, palette);
+  }
+});
